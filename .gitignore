@@ -19,3 +19,8 @@ htmlcov/
 
 # VS Code
 .vscode/
+
+# Local runtime data
+log/*.db
+log/*.log
+log/*.png

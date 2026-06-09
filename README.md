@@ -58,6 +58,14 @@ For a live CoinMarketCap Skill Hub run using `find_skill` + `execute_skill`:
 python examples/run_skill_hub_daily_market.py
 ```
 
+For the local monitoring and control dashboard:
+
+```bash
+python examples/run_dashboard.py
+```
+
+Then open `http://127.0.0.1:8010` by default.
+
 For the REST fallback pipeline:
 
 ```bash
@@ -71,6 +79,7 @@ python examples/run_strategy.py
 - `cadr/`: The core Python package containing the data layer, analysis engine, strategy generator, and backtester.
 - `cadr/skill_hub/`: A Skill Hub client and pipeline layer for `find_skill` / `execute_skill`.
 - `cadr/agent/`: The agent orchestration layer that converts CMC MCP snapshots into strategy specs.
+- `cadr/dashboard/`: FastAPI, SQLite, and a local web UI for monitoring runs and controlling scans.
 - `examples/`: Example scripts showing how to use the package.
 - `tests/`: Unit tests for the core logic.
 

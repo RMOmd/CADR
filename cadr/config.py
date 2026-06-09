@@ -18,6 +18,20 @@ DEFAULT_PAIRS = [
     ("BTC", "BNB"),
     ("SOL", "AVAX")
 ]
+MONITORING_PAIRS = [
+    ("BTC", "ETH"),
+    ("ETH", "SOL"),
+    ("BTC", "BNB"),
+    ("ETH", "BNB"),
+    ("BTC", "XRP"),
+    ("SOL", "AVAX"),
+    ("BTC", "SOL"),
+    ("ETH", "AVAX"),
+    ("ETH", "ADA"),
+]
+CADR_DASHBOARD_DB_PATH = os.getenv("CADR_DASHBOARD_DB_PATH", "log/cadr_dashboard.db")
+CADR_DASHBOARD_HOST = os.getenv("CADR_DASHBOARD_HOST", "127.0.0.1")
+CADR_DASHBOARD_PORT = int(os.getenv("CADR_DASHBOARD_PORT", "8010"))
 
 # Divergence detection thresholds
 Z_SCORE_ENTRY_THRESHOLD = 2.0
