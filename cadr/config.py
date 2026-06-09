@@ -4,8 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # API Configuration
-CMC_API_KEY = os.getenv("CMC_API_KEY", "b54bcf4d-1bca-4e8e-9a24-22ff2c3d462c") # Default sandbox key
+DEFAULT_SANDBOX_API_KEY = "b54bcf4d-1bca-4e8e-9a24-22ff2c3d462c"
+CMC_API_KEY = os.getenv("CMC_API_KEY", DEFAULT_SANDBOX_API_KEY)
 CMC_API_BASE_URL = os.getenv("CMC_API_BASE_URL", "https://sandbox-api.coinmarketcap.com")
+CMC_SKILL_HUB_API_KEY = os.getenv("CMC_SKILL_HUB_API_KEY")
+CMC_SKILL_HUB_URL = os.getenv("CMC_SKILL_HUB_URL", "https://mcp.coinmarketcap.com/skill-hub/stream")
+CMC_SKILL_HUB_TOOL_TIMEOUT_SEC = int(os.getenv("CMC_SKILL_HUB_TOOL_TIMEOUT_SEC", "300"))
 
 # Strategy Configuration
 DEFAULT_PAIRS = [
