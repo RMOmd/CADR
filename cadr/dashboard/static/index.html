@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CADR Control Room</title>
-    <link rel="stylesheet" href="/static/styles.css?v=5" />
+    <link rel="stylesheet" href="/static/styles.css?v=6" />
   </head>
   <body>
     <div class="page-shell">
@@ -96,6 +96,67 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
+              <h2 id="watchlist-title">Watchlist Monitor</h2>
+              <p id="watchlist-caption" class="panel-caption">Edit the default pair set, keep the background monitor running, and save entry checkpoints for next-day validation.</p>
+            </div>
+          </div>
+          <div class="watchlist-layout">
+            <section class="watchlist-section">
+              <div class="watchlist-toolbar">
+                <label class="watchlist-field checkbox-field">
+                  <span id="watchlist-enabled-label">Background monitor</span>
+                  <input id="watchlist-enabled" type="checkbox" />
+                </label>
+                <label class="watchlist-field">
+                  <span id="monitor-interval-label">Interval, minutes</span>
+                  <input id="monitor-interval" type="number" min="3" max="60" value="5" />
+                </label>
+                <label class="watchlist-field">
+                  <span id="monitor-lookback-label">Lookback days</span>
+                  <input id="monitor-lookback" type="number" min="30" max="365" value="90" />
+                </label>
+              </div>
+
+              <label class="watchlist-editor">
+                <span id="watchlist-editor-label">Pairs, one per line</span>
+                <textarea id="watchlist-editor" rows="8" spellcheck="false">BTC/ETH
+ETH/SOL
+BTC/BNB
+ETH/BNB
+BTC/XRP
+SOL/AVAX
+BTC/SOL
+ETH/AVAX
+ETH/ADA</textarea>
+              </label>
+
+              <div class="watchlist-actions">
+                <button id="save-watchlist" class="primary-btn">Save watchlist</button>
+                <button id="run-monitor-now" class="secondary-btn">Run monitor now</button>
+                <button id="evaluate-forecasts" class="secondary-btn">Evaluate forecasts</button>
+              </div>
+
+              <div id="watchlist-status" class="callout">Watchlist settings will appear here.</div>
+            </section>
+
+            <section class="watchlist-section">
+              <div class="subpanels single-column">
+                <div class="subpanel">
+                  <h3 id="forecast-summary-title">Forecast Summary</h3>
+                  <div id="forecast-summary" class="stacked-copy"></div>
+                </div>
+                <div class="subpanel">
+                  <h3 id="recent-forecasts-title">Recent Forecasts</h3>
+                  <div id="recent-forecasts" class="forecast-list"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
               <h2 id="signal-board-title">Signal Board</h2>
               <p id="signal-board-caption" class="panel-caption">Best opportunities and biggest dislocations ranked visually.</p>
             </div>
@@ -151,6 +212,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
   </body>
 </html>

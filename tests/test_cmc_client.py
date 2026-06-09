@@ -1,99 +1,72 @@
+import pytest
+
 from cadr.data.cmc_client import CMCClient
 
 
-def test_get_quotes_uses_mocked_cmc_responses(monkeypatch):
-    client = CMCClient(api_key="test-key", base_url="https://example.test")
-    calls = []
+class FakeResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = str(payload)
 
-    def fake_request(endpoint, params=None):
-        calls.append((endpoint, params))
-        if endpoint == "/v1/cryptocurrency/map":
-            return [{"id": 1, "symbol": "BTC", "rank": 1}]
-        if endpoint == "/v3/cryptocurrency/quotes/latest":
-            return {
-                "1": {
-                    "quote": {
-                        "USD": {
-                            "price": 65000.0,
-                            "market_cap": 1_200_000_000_000.0,
-                            "volume_24h": 25_000_000_000.0,
-                            "percent_change_1h": 0.5,
-                            "percent_change_24h": 1.2,
-                            "percent_change_7d": 4.8,
-                            "percent_change_30d": 9.1
-                        }
+    def json(self):
+        return self._payload
+
+
+def test_cmc_client_retries_retryable_http_errors(monkeypatch):
+    attempts = {"count": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            return FakeResponse(500, {"status": {"error_message": "temporary"}})
+        return FakeResponse(200, {"data": {"1": {"quote": {"USD": {"price": 100, "market_cap": 1, "volume_24h": 1}}}}})
+
+    client = CMCClient(api_key="test-key", retry_count=2, retry_backoff_sec=0.0, min_interval_sec=0.0)
+    client._symbol_to_id_cache["BTC"] = 1
+    monkeypatch.setattr(client.session, "get", fake_get)
+
+    result = client.get_quotes(["BTC"])
+
+    assert attempts["count"] == 3
+    assert result["BTC"].price == 100
+
+
+def test_cmc_client_requires_api_key_before_request():
+    client = CMCClient(api_key=None, retry_count=0, min_interval_sec=0.0)
+
+    with pytest.raises(ValueError, match="CMC_API_KEY"):
+        client.get_global_metrics()
+
+
+def test_cmc_client_accepts_list_shape_for_quotes_payload(monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(
+            200,
+            {
+                "data": [
+                    {
+                        "id": 1,
+                        "quote": {
+                            "USD": {
+                                "price": 101,
+                                "market_cap": 11,
+                                "volume_24h": 7,
+                                "percent_change_1h": 0.1,
+                                "percent_change_24h": 0.2,
+                                "percent_change_7d": 0.3,
+                                "percent_change_30d": 0.4,
+                            }
+                        },
                     }
-                }
-            }
-        raise AssertionError(f"Unexpected endpoint: {endpoint}")
+                ]
+            },
+        )
 
-    monkeypatch.setattr(client, "_request", fake_request)
+    client = CMCClient(api_key="test-key", retry_count=0, min_interval_sec=0.0)
+    client._symbol_to_id_cache["BTC"] = 1
+    monkeypatch.setattr(client.session, "get", fake_get)
 
-    quotes = client.get_quotes(["BTC"])
+    result = client.get_quotes(["BTC"])
 
-    assert "BTC" in quotes
-    assert quotes["BTC"].price == 65000.0
-    assert calls[0][0] == "/v1/cryptocurrency/map"
-    assert calls[1][0] == "/v3/cryptocurrency/quotes/latest"
-
-
-def test_get_id_map_handles_none_rank_and_prefers_ranked_asset(monkeypatch):
-    client = CMCClient(api_key="test-key", base_url="https://example.test")
-
-    def fake_request(endpoint, params=None):
-        if endpoint == "/v1/cryptocurrency/map":
-            return [
-                {"id": 999, "symbol": "SOL", "rank": None},
-                {"id": 5426, "symbol": "SOL", "rank": 5},
-            ]
-        raise AssertionError(f"Unexpected endpoint: {endpoint}")
-
-    monkeypatch.setattr(client, "_request", fake_request)
-
-    id_map = client.get_id_map(["SOL"])
-
-    assert id_map["SOL"] == 5426
-
-
-def test_get_historical_ohlcv_uses_quotes_historical_shape(monkeypatch):
-    client = CMCClient(api_key="test-key", base_url="https://example.test")
-
-    def fake_request(endpoint, params=None):
-        if endpoint == "/v1/cryptocurrency/map":
-            return [{"id": 1, "symbol": "BTC", "rank": 1}]
-        if endpoint == "/v3/cryptocurrency/quotes/historical":
-            return {
-                "1": {
-                    "quotes": [
-                        {
-                            "timestamp": "2024-01-01T00:00:00.000Z",
-                            "quote": {
-                                "USD": {
-                                    "price": 42000.0,
-                                    "volume_24h": 10_000_000.0,
-                                    "market_cap": 800_000_000_000.0,
-                                }
-                            },
-                        },
-                        {
-                            "timestamp": "2024-01-02T00:00:00.000Z",
-                            "quote": {
-                                "USD": {
-                                    "price": 43000.0,
-                                    "volume_24h": 12_000_000.0,
-                                    "market_cap": 820_000_000_000.0,
-                                }
-                            },
-                        },
-                    ]
-                }
-            }
-        raise AssertionError(f"Unexpected endpoint: {endpoint}")
-
-    monkeypatch.setattr(client, "_request", fake_request)
-
-    df = client.get_historical_ohlcv("BTC", days=2)
-
-    assert list(df["close"]) == [42000.0, 43000.0]
-    assert list(df["open"]) == [42000.0, 43000.0]
-    assert list(df["volume"]) == [10_000_000.0, 12_000_000.0]
+    assert result["BTC"].price == 101

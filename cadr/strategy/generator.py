@@ -56,7 +56,10 @@ def generate_strategy(
             "position_size_pct": round(pos_size * 100, 2),
             "max_portfolio_risk_pct": round(cfg.DEFAULT_MAX_PORTFOLIO_RISK_PCT * 100, 2),
             "stop_loss_pct": round(sl_pct * 100, 2),
-            "take_profit_pct": round(cfg.DEFAULT_TAKE_PROFIT_PCT * 100, 2)
+            "take_profit_pct": round(cfg.DEFAULT_TAKE_PROFIT_PCT * 100, 2),
+            "fee_bps_per_leg": cfg.BACKTEST_FEE_BPS_PER_LEG,
+            "slippage_bps_per_leg": cfg.BACKTEST_SLIPPAGE_BPS_PER_LEG,
+            "borrow_bps_daily": cfg.BACKTEST_BORROW_BPS_DAILY,
         },
         market_context=market_context
     )

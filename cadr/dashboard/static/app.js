@@ -28,6 +28,44 @@ const TRANSLATIONS = {
     pairDetailCaption: "Expanded view with signal summary, trend context, and optional raw payload.",
     recentRunsTitle: "Recent Runs",
     recentRunsCaption: "Operational log of scans, overview pulls, and pair-specific jobs.",
+    watchlistTitle: "Watchlist Monitor",
+    watchlistCaption:
+      "Edit the default pair set, keep the background monitor running, and save entry checkpoints for next-day validation.",
+    backgroundMonitor: "Background monitor",
+    intervalMinutes: "Interval, minutes",
+    monitorLookbackDays: "Lookback days",
+    watchlistEditorLabel: "Pairs, one per line",
+    saveWatchlist: "Save watchlist",
+    runMonitorNow: "Run monitor now",
+    evaluateForecasts: "Evaluate forecasts",
+    forecastSummaryTitle: "Forecast Summary",
+    recentForecastsTitle: "Recent Forecasts",
+    forecastSummaryEmpty: "No forecast checkpoints have been saved yet.",
+    watchlistStatusIdle: "Watchlist settings will appear here.",
+    monitorEnabledYes: "Enabled",
+    monitorEnabledNo: "Disabled",
+    monitorNextRun: "Next run",
+    monitorLastRun: "Last run",
+    forecastPending: "Pending",
+    forecastEvaluated: "Evaluated",
+    forecastWins: "Wins",
+    forecastLosses: "Losses",
+    forecastFlat: "Flat",
+    exportPath: "Export file",
+    entryCheckpoint: "Entry checkpoint",
+    dueAt: "Due",
+    outcome: "Outcome",
+    noForecasts: "No forecast checkpoints yet.",
+    saveWatchlistAction: "Save watchlist",
+    runMonitorAction: "Run monitor",
+    evaluateForecastsAction: "Evaluate forecasts",
+    watchlistSaved: "Watchlist updated successfully.",
+    forecastsEvaluated: "{count} forecasts evaluated.",
+    pendingOutcome: "Pending",
+    evaluatedOutcome: "Evaluated",
+    win: "Win",
+    loss: "Loss",
+    flat: "Flat",
     languageLabel: "Language",
     autoLanguage: "Auto (browser/system)",
     pair: "Pair",
@@ -96,6 +134,8 @@ const TRANSLATIONS = {
     ready: "ready",
     loading: "loading",
     running: "running",
+    pending: "pending",
+    evaluated: "evaluated",
     unknown: "unknown",
     ok: "ok",
     error: "error",
@@ -147,6 +187,44 @@ const TRANSLATIONS = {
     pairDetailCaption: "Расширенный вид с сигналом, контекстом тренда и сырым payload по запросу.",
     recentRunsTitle: "Последние запуски",
     recentRunsCaption: "Операционный журнал сканов, обзоров и точечных запусков по парам.",
+    watchlistTitle: "Watchlist и мониторинг",
+    watchlistCaption:
+      "Редактируй набор пар по умолчанию, держи фоновый монитор активным и сохраняй точки входа для проверки прогноза на следующий день.",
+    backgroundMonitor: "Фоновый монитор",
+    intervalMinutes: "Интервал, минут",
+    monitorLookbackDays: "Период, дней",
+    watchlistEditorLabel: "Пары, по одной на строку",
+    saveWatchlist: "Сохранить watchlist",
+    runMonitorNow: "Запустить монитор сейчас",
+    evaluateForecasts: "Проверить прогнозы",
+    forecastSummaryTitle: "Сводка прогнозов",
+    recentForecastsTitle: "Последние прогнозы",
+    forecastSummaryEmpty: "Точки входа пока не сохранены.",
+    watchlistStatusIdle: "Здесь появятся настройки watchlist.",
+    monitorEnabledYes: "Включён",
+    monitorEnabledNo: "Выключен",
+    monitorNextRun: "Следующий запуск",
+    monitorLastRun: "Последний запуск",
+    forecastPending: "В ожидании",
+    forecastEvaluated: "Проверено",
+    forecastWins: "Удачные",
+    forecastLosses: "Неудачные",
+    forecastFlat: "Нейтральные",
+    exportPath: "Файл экспорта",
+    entryCheckpoint: "Точка входа",
+    dueAt: "Проверка",
+    outcome: "Итог",
+    noForecasts: "Сохранённых точек входа пока нет.",
+    saveWatchlistAction: "Сохранение watchlist",
+    runMonitorAction: "Запуск монитора",
+    evaluateForecastsAction: "Проверка прогнозов",
+    watchlistSaved: "Watchlist успешно обновлён.",
+    forecastsEvaluated: "Проверено прогнозов: {count}.",
+    pendingOutcome: "В ожидании",
+    evaluatedOutcome: "Проверено",
+    win: "Успех",
+    loss: "Ошибка",
+    flat: "Нейтрально",
     languageLabel: "Язык",
     autoLanguage: "Авто (браузер/система)",
     pair: "Пара",
@@ -215,6 +293,8 @@ const TRANSLATIONS = {
     ready: "готово",
     loading: "загрузка",
     running: "выполняется",
+    pending: "в ожидании",
+    evaluated: "проверено",
     unknown: "неизвестно",
     ok: "ok",
     error: "ошибка",
@@ -1462,8 +1542,23 @@ function localizeRunType(runType) {
     daily_overview: "dailyOverviewRunType",
     default_scan: "defaultScanRunType",
     pair_scan: "pairScanRunType",
+    monitor_scan: "runMonitorAction",
   };
   return t(mapping[runType] ?? runType);
+}
+
+function localizeOutcome(value) {
+  if (!value) {
+    return t("pendingOutcome");
+  }
+  const mapping = {
+    pending: "pendingOutcome",
+    evaluated: "evaluatedOutcome",
+    win: "win",
+    loss: "loss",
+    flat: "flat",
+  };
+  return t(mapping[String(value).toLowerCase()] ?? value);
 }
 
 function localizeEnum(value) {
@@ -1553,7 +1648,7 @@ function setActionLog(message, status = "partial") {
 }
 
 function setControlsDisabled(disabled) {
-  document.querySelectorAll("button, input").forEach((element) => {
+  document.querySelectorAll("button, input, textarea, select").forEach((element) => {
     element.disabled = disabled;
   });
 }
@@ -1631,6 +1726,17 @@ function applyStaticTranslations() {
     "pair-detail-caption": "pairDetailCaption",
     "recent-runs-title": "recentRunsTitle",
     "recent-runs-caption": "recentRunsCaption",
+    "watchlist-title": "watchlistTitle",
+    "watchlist-caption": "watchlistCaption",
+    "watchlist-enabled-label": "backgroundMonitor",
+    "monitor-interval-label": "intervalMinutes",
+    "monitor-lookback-label": "monitorLookbackDays",
+    "watchlist-editor-label": "watchlistEditorLabel",
+    "save-watchlist": "saveWatchlist",
+    "run-monitor-now": "runMonitorNow",
+    "evaluate-forecasts": "evaluateForecasts",
+    "forecast-summary-title": "forecastSummaryTitle",
+    "recent-forecasts-title": "recentForecastsTitle",
     "th-pair": "pair",
     "th-status": "status",
     "th-direction": "direction",
@@ -1666,6 +1772,11 @@ function applyStaticTranslations() {
 
   if (!state.dashboard && !document.getElementById("action-log").dataset.userSet) {
     setActionLog(t("actionLogIdle"));
+  }
+
+  const watchlistStatus = document.getElementById("watchlist-status");
+  if (watchlistStatus && !watchlistStatus.dataset.userSet) {
+    watchlistStatus.textContent = t("watchlistStatusIdle");
   }
 }
 
@@ -1729,6 +1840,8 @@ function renderStats(stats) {
     ["latestSignals", stats.latest_pairs_available ?? 0, "latestSignalsNote"],
     ["healthySignals", stats.ok_pairs ?? 0, "healthySignalsNote"],
     ["signalFailures", stats.error_pairs ?? 0, "signalFailuresNote"],
+    ["forecastPending", stats.pending_forecasts ?? 0, "forecastSummaryTitle"],
+    ["forecastEvaluated", stats.evaluated_forecasts ?? 0, "recentForecastsTitle"],
   ];
 
   grid.innerHTML = cards
@@ -1741,6 +1854,69 @@ function renderStats(stats) {
         </article>
       `
     )
+    .join("");
+}
+
+function renderWatchlistPanel(watchlist, monitor, forecasts) {
+  const editor = document.getElementById("watchlist-editor");
+  const enabled = document.getElementById("watchlist-enabled");
+  const interval = document.getElementById("monitor-interval");
+  const lookback = document.getElementById("monitor-lookback");
+  const status = document.getElementById("watchlist-status");
+  const summary = document.getElementById("forecast-summary");
+
+  editor.value = (watchlist ?? []).map((entry) => entry.pair).join("\n");
+  enabled.checked = Boolean(monitor?.enabled);
+  interval.value = Math.max(3, Math.round((monitor?.interval_sec ?? 300) / 60));
+  lookback.value = monitor?.lookback_days ?? 90;
+
+  status.textContent =
+    `${t("backgroundMonitor")}: ${monitor?.enabled ? t("monitorEnabledYes") : t("monitorEnabledNo")} · ` +
+    `${t("monitorNextRun")}: ${formatDateTime(monitor?.next_run_at, "unknown")} · ` +
+    `${t("monitorLastRun")}: ${formatDateTime(monitor?.last_finished_at, "unknown")}`;
+  status.dataset.userSet = "true";
+
+  const forecastSummary = forecasts?.summary ?? {};
+  summary.innerHTML = `
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastPending"))}</span><strong>${escapeHtml(forecastSummary.pending ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastEvaluated"))}</span><strong>${escapeHtml(forecastSummary.evaluated ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastWins"))}</span><strong class="tone-ok">${escapeHtml(forecastSummary.wins ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastLosses"))}</span><strong class="tone-error">${escapeHtml(forecastSummary.losses ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastFlat"))}</span><strong>${escapeHtml(forecastSummary.flat ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("exportPath"))}</span><span>${escapeHtml(forecasts?.export_path ?? "—")}</span></div>
+  `;
+}
+
+function renderForecasts(forecasts) {
+  const container = document.getElementById("recent-forecasts");
+  const items = forecasts?.recent ?? [];
+  if (items.length === 0) {
+    container.innerHTML = `<div class="muted">${escapeHtml(t("noForecasts"))}</div>`;
+    return;
+  }
+
+  container.innerHTML = items
+    .map((item) => `
+      <article class="forecast-card">
+        <div class="forecast-card-head">
+          <strong>${escapeHtml(item.pair)}</strong>
+          <span class="status-pill ${item.status === "evaluated" && item.outcome === "win" ? "tone-ok" : item.status === "evaluated" && item.outcome === "loss" ? "tone-error" : "tone-partial"}">
+            ${escapeHtml(localizeOutcome(item.outcome ?? item.status))}
+          </span>
+        </div>
+        <div class="forecast-card-meta">
+          <span>${escapeHtml(interpolateDirectionText(item.direction))}</span>
+          <span>${escapeHtml(t("entryCheckpoint"))}: ${escapeHtml(formatDateTime(item.created_at, "unknown"))}</span>
+          <span>${escapeHtml(t("dueAt"))}: ${escapeHtml(formatDateTime(item.due_at, "unknown"))}</span>
+        </div>
+        <div class="forecast-card-meta">
+          <span>${escapeHtml(t("zScore"))}: ${escapeHtml(formatSigned(item.spread_zscore))}</span>
+          <span>${escapeHtml(t("conviction"))}: ${escapeHtml(item.conviction_score ?? "—")}</span>
+          <span>${escapeHtml(t("correlation"))}: ${escapeHtml(formatNumber(item.correlation, 3))}</span>
+          <span>${escapeHtml(t("outcome"))}: ${escapeHtml(item.pnl_pct === null || item.pnl_pct === undefined ? "—" : `${formatSigned(item.pnl_pct)}%`)}</span>
+        </div>
+      </article>
+    `)
     .join("");
 }
 
@@ -2034,6 +2210,8 @@ async function loadDashboard() {
   renderStats(data.stats);
   renderRunSummary("latest-overview", data.latest_overview, "noDailyOverview");
   renderRunSummary("latest-scan", data.latest_scan, "noPairScan");
+  renderWatchlistPanel(data.watchlist, data.monitor, data.forecasts);
+  renderForecasts(data.forecasts);
   renderSignalBoard(data.pair_signals);
   renderPairTable(data.pair_signals);
   renderRuns(data.recent_runs);
@@ -2080,6 +2258,8 @@ document.getElementById("language-select").addEventListener("change", async (eve
     renderStats(state.dashboard.stats);
     renderRunSummary("latest-overview", state.dashboard.latest_overview, "noDailyOverview");
     renderRunSummary("latest-scan", state.dashboard.latest_scan, "noPairScan");
+    renderWatchlistPanel(state.dashboard.watchlist, state.dashboard.monitor, state.dashboard.forecasts);
+    renderForecasts(state.dashboard.forecasts);
     renderSignalBoard(state.dashboard.pair_signals);
     renderPairTable(state.dashboard.pair_signals);
     renderRuns(state.dashboard.recent_runs);
@@ -2121,6 +2301,50 @@ document.getElementById("pair-form").addEventListener("submit", async (event) =>
   );
   if (result?.pair) {
     await selectPair(result.pair);
+  }
+});
+
+document.getElementById("save-watchlist").addEventListener("click", async () => {
+  const pairs = document
+    .getElementById("watchlist-editor")
+    .value.split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const result = await runAction(t("saveWatchlistAction"), () =>
+    api("/api/watchlist", {
+      method: "PUT",
+      body: JSON.stringify({
+        pairs,
+        enabled: document.getElementById("watchlist-enabled").checked,
+        interval_minutes: Number(document.getElementById("monitor-interval").value),
+        lookback_days: Number(document.getElementById("monitor-lookback").value),
+      }),
+    })
+  );
+
+  if (result) {
+    const status = document.getElementById("watchlist-status");
+    status.dataset.userSet = "true";
+    status.textContent = t("watchlistSaved");
+  }
+});
+
+document.getElementById("run-monitor-now").addEventListener("click", () =>
+  runAction(t("runMonitorAction"), () => api("/api/monitor/run", { method: "POST" }))
+);
+
+document.getElementById("evaluate-forecasts").addEventListener("click", async () => {
+  const result = await runAction(t("evaluateForecastsAction"), () =>
+    api("/api/forecasts/evaluate", {
+      method: "POST",
+      body: JSON.stringify({ force: false }),
+    })
+  );
+  if (result) {
+    const status = document.getElementById("watchlist-status");
+    status.dataset.userSet = "true";
+    status.textContent = t("forecastsEvaluated", { count: result.evaluated ?? 0 });
   }
 });
 

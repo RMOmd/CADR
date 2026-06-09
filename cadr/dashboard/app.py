@@ -1,4 +1,6 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import List
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -6,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import cadr.config as cfg
+from cadr.dashboard.monitor import DashboardMonitor
 from cadr.dashboard.service import DashboardService
 from cadr.dashboard.storage import DashboardStorage
 
@@ -20,6 +23,28 @@ class ScanRunRequest(BaseModel):
     lookback_days: int = Field(default=90, ge=30, le=365)
 
 
+class WatchlistUpdateRequest(BaseModel):
+    pairs: List[str] = Field(min_length=1)
+    enabled: bool = True
+    interval_minutes: int = Field(default=5, ge=3, le=60)
+    lookback_days: int = Field(default=90, ge=30, le=365)
+
+
+class ForecastEvaluateRequest(BaseModel):
+    force: bool = False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    monitor = DashboardMonitor(app.state.dashboard_service)
+    app.state.dashboard_monitor = monitor
+    monitor.start()
+    try:
+        yield
+    finally:
+        monitor.stop()
+
+
 def create_app() -> FastAPI:
     base_dir = Path(__file__).resolve().parent
     static_dir = base_dir / "static"
@@ -28,7 +53,7 @@ def create_app() -> FastAPI:
     storage = DashboardStorage(cfg.CADR_DASHBOARD_DB_PATH)
     service = DashboardService(storage=storage)
 
-    app = FastAPI(title="CADR Dashboard", version="0.1.0")
+    app = FastAPI(title="CADR Dashboard", version="0.2.0", lifespan=lifespan)
     app.state.dashboard_service = service
     app.state.dashboard_storage = storage
 
@@ -72,5 +97,35 @@ def create_app() -> FastAPI:
             quote_asset=payload.quote_asset,
             lookback_days=payload.lookback_days,
         )
+
+    @app.get("/api/watchlist")
+    def get_watchlist(request: Request):
+        return request.app.state.dashboard_service.get_watchlist_payload()
+
+    @app.put("/api/watchlist")
+    def update_watchlist(payload: WatchlistUpdateRequest, request: Request):
+        try:
+            return request.app.state.dashboard_service.update_watchlist(
+                pair_strings=payload.pairs,
+                enabled=payload.enabled,
+                interval_minutes=payload.interval_minutes,
+                lookback_days=payload.lookback_days,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.post("/api/monitor/run")
+    def run_monitor(request: Request):
+        return request.app.state.dashboard_service.run_monitor_cycle(force=True)
+
+    @app.get("/api/forecasts")
+    def get_forecasts(request: Request, limit: int = 20):
+        return request.app.state.dashboard_service.list_forecasts(limit=max(1, min(limit, 200)))
+
+    @app.post("/api/forecasts/evaluate")
+    def evaluate_forecasts(payload: ForecastEvaluateRequest, request: Request):
+        if payload.force:
+            return request.app.state.dashboard_service.evaluate_due_forecasts()
+        return request.app.state.dashboard_service.evaluate_due_forecasts()
 
     return app

@@ -14,6 +14,10 @@ The CADR skill allows AI agents to detect cross-asset divergences between crypto
 - **Dynamic Risk Management**: Adjusts position sizing and stop-loss levels based on market regime and signal conviction.
 - **Backtesting Engine**: Supports optional backtests with mark-to-market equity tracking and end-of-period liquidation when historical price series are available.
 - **Structured Output**: Emits strategy specs with evidence, invalidation criteria, catalysts, thresholds, and market context.
+- **Background Watchlist Monitoring**: Tracks a configurable default pair set every few minutes and keeps the latest signal state warm in the dashboard.
+- **Forecast Journal**: Saves real entry checkpoints for strong signals, exports them to JSON, and supports next-day validation of whether the pair call actually worked.
+- **Resilient Data Transport**: Adds retry/backoff-aware CMC REST and Skill Hub calls so scans fail less often under temporary API issues.
+- **More Realistic Backtests**: Includes configurable fees, slippage, and short borrow drag in backtest outputs.
 
 ## Setup
 
@@ -65,6 +69,19 @@ python examples/run_dashboard.py
 ```
 
 Then open `http://127.0.0.1:8010` by default.
+
+The dashboard now supports:
+
+- Editing the default watchlist directly from the UI.
+- Background monitoring every `CADR_MONITOR_INTERVAL_SEC` seconds.
+- Saving entry checkpoints for high-z-score signals into `CADR_FORECAST_EXPORT_PATH`.
+- Re-checking due forecasts after the configured `CADR_FORECAST_HORIZON_HOURS`.
+
+The REST and backtest layers are also configurable through `.env`:
+
+- `CMC_API_TIMEOUT_SEC`, `CMC_API_RETRY_COUNT`, `CMC_API_RETRY_BACKOFF_SEC`, `CMC_API_MIN_INTERVAL_SEC`
+- `CMC_SKILL_HUB_RETRY_COUNT`, `CMC_SKILL_HUB_RETRY_BACKOFF_SEC`
+- `BACKTEST_FEE_BPS_PER_LEG`, `BACKTEST_SLIPPAGE_BPS_PER_LEG`, `BACKTEST_BORROW_BPS_DAILY`
 
 For the REST fallback pipeline:
 
