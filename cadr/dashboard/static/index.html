@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CADR Control Room</title>
+    <link rel="stylesheet" href="/static/styles.css?v=2" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy-block">
+          <p class="eyebrow">CADR Control Room</p>
+          <h1>Cross-asset monitoring built for decision-making, not raw dumps.</h1>
+          <p class="hero-copy">
+            Watch divergence pressure, signal quality, and market regime in one screen. Keep the
+            payload available on demand, but let the interface surface what matters first.
+          </p>
+        </div>
+
+        <section class="hero-side panel">
+          <div class="panel-header compact">
+            <h2>Actions</h2>
+            <span id="snapshot-status" class="status-pill">loading</span>
+          </div>
+
+          <div class="hero-actions">
+            <button id="refresh-dashboard" class="primary-btn">Refresh Dashboard</button>
+            <button id="run-daily" class="secondary-btn">Run Daily Overview</button>
+            <button id="run-default-scan" class="secondary-btn">Run Pair Scan</button>
+          </div>
+
+          <form id="pair-form" class="pair-form">
+            <div class="pair-form-grid">
+              <label>
+                Base asset
+                <input id="base-asset" value="BTC" />
+              </label>
+              <label>
+                Quote asset
+                <input id="quote-asset" value="ETH" />
+              </label>
+              <label class="wide-field">
+                Lookback days
+                <input id="lookback-days" type="number" min="30" max="365" value="90" />
+              </label>
+            </div>
+            <button type="submit" class="primary-btn">Run Custom Pair</button>
+          </form>
+
+          <div id="action-log" class="callout">Dashboard is waiting for the next action.</div>
+        </section>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>System Snapshot</h2>
+              <p class="panel-caption">High-level health, cadence, and latest system outputs.</p>
+            </div>
+          </div>
+          <div id="stats-grid" class="stats-grid"></div>
+          <div class="subpanels">
+            <div class="subpanel">
+              <h3>Latest Daily Overview</h3>
+              <div id="latest-overview" class="stacked-copy"></div>
+            </div>
+            <div class="subpanel">
+              <h3>Latest Scan</h3>
+              <div id="latest-scan" class="stacked-copy"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>Signal Board</h2>
+              <p class="panel-caption">Best opportunities and biggest dislocations ranked visually.</p>
+            </div>
+          </div>
+          <div id="signal-board" class="signal-board"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>Pair Monitor</h2>
+              <p class="panel-caption">Click a pair to inspect history, reasoning, and strategy state.</p>
+            </div>
+          </div>
+          <div class="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pair</th>
+                  <th>Status</th>
+                  <th>Direction</th>
+                  <th>Z-Score</th>
+                  <th>Conviction</th>
+                  <th>Divergence</th>
+                  <th>Correlation</th>
+                  <th>Regime</th>
+                </tr>
+              </thead>
+              <tbody id="pair-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>Pair Detail</h2>
+              <p class="panel-caption">Expanded view with signal summary, trend context, and optional raw payload.</p>
+            </div>
+          </div>
+          <div id="pair-detail" class="stacked-copy muted">Select a pair from the monitor to inspect it.</div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2>Recent Runs</h2>
+              <p class="panel-caption">Operational log of scans, overview pulls, and pair-specific jobs.</p>
+            </div>
+          </div>
+          <div id="runs-list" class="runs-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js?v=2"></script>
+  </body>
+</html>
