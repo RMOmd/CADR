@@ -1,0 +1,8 @@
+pandas
+numpy
+scipy
+requests
+pydantic
+python-dotenv
+pytest
+pytest-cov
