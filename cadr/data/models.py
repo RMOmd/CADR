@@ -43,7 +43,7 @@ class DivergenceSignal(BaseModel):
 
 class StrategySpec(BaseModel):
     skill: str = "cadr"
-    version: str = "1.0.0"
+    version: str = "2.0.0"
     generated_at: str
     strategy: Dict[str, Any]
     analysis: Dict[str, Any]

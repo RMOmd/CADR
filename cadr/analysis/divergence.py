@@ -3,6 +3,7 @@ import numpy as np
 from typing import List
 
 from cadr.data.models import DivergenceSignal
+from cadr.analysis.correlation import rolling_correlation, detect_correlation_breakdown
 
 def compute_spread(prices_a: pd.Series, prices_b: pd.Series, method: str = 'ratio') -> pd.Series:
     """Compute spread between two assets. Method can be 'ratio' or 'difference'."""
@@ -34,7 +35,12 @@ def spread_zscore(spread: pd.Series, lookback: int = 30) -> pd.Series:
     
     return (spread - rolling_mean) / rolling_std
 
-def detect_divergences(pairs_data: dict, threshold: float = 2.0, lookback: int = 30) -> List[DivergenceSignal]:
+def detect_divergences(
+    pairs_data: dict,
+    threshold: float = 2.0,
+    lookback: int = 30,
+    require_correlation_breakdown: bool = True
+) -> List[DivergenceSignal]:
     """
     Detect divergences across multiple pairs.
     pairs_data: dict of (asset_a, asset_b) -> tuple of (prices_a_series, prices_b_series)
@@ -42,6 +48,12 @@ def detect_divergences(pairs_data: dict, threshold: float = 2.0, lookback: int =
     signals = []
     
     for (asset_a, asset_b), (prices_a, prices_b) in pairs_data.items():
+        corr_series = rolling_correlation(prices_a, prices_b, window=lookback)
+        correlation_breakdown = bool(detect_correlation_breakdown(corr_series))
+
+        if require_correlation_breakdown and not correlation_breakdown:
+            continue
+
         spread = compute_spread(prices_a, prices_b, method='ratio')
         zscores = spread_zscore(spread, lookback=lookback)
         
@@ -66,7 +78,13 @@ def detect_divergences(pairs_data: dict, threshold: float = 2.0, lookback: int =
                 z_score=current_zscore,
                 direction=direction,
                 conviction_score=conviction,
-                metadata={"spread_method": "ratio", "lookback": lookback, "current_ratio": spread.iloc[-1]}
+                metadata={
+                    "spread_method": "ratio",
+                    "lookback": lookback,
+                    "current_ratio": spread.iloc[-1],
+                    "correlation_breakdown": correlation_breakdown,
+                    "current_correlation": corr_series.iloc[-1] if not corr_series.empty else None
+                }
             ))
             
     return signals

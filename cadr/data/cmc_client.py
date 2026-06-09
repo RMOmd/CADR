@@ -7,6 +7,14 @@ import pandas as pd
 from cadr.config import CMC_API_BASE_URL, CMC_API_KEY
 from cadr.data.models import OHLCVBar, AssetQuote, GlobalMetrics, FearGreedEntry
 
+
+def _coalesce_value(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 class CMCClient:
     """Client for CoinMarketCap REST API."""
     
@@ -52,7 +60,13 @@ class CMCClient:
             # API returns a list of matching coins. We take the highest rank one for each symbol.
             if isinstance(data, list):
                 # Sort by rank to prioritize major coins (e.g. SOL = Solana, not some random token)
-                sorted_data = sorted(data, key=lambda x: x.get('rank', 999999))
+                sorted_data = sorted(
+                    data,
+                    key=lambda x: (
+                        x.get('rank') is None,
+                        x.get('rank') if x.get('rank') is not None else 999999
+                    )
+                )
                 for item in sorted_data:
                     sym = item['symbol']
                     if sym in uncached and sym not in self._symbol_to_id_cache:
@@ -93,13 +107,17 @@ class CMCClient:
         return result
         
     def get_historical_ohlcv(self, symbol: str, days: int = 90) -> pd.DataFrame:
-        """Get historical daily OHLCV data as a DataFrame."""
+        """Get historical daily price series as a DataFrame.
+
+        We prefer quotes/historical because it is available on more CMC API plans
+        than ohlcv/historical while still providing the close series this project uses.
+        """
         id_map = self.get_id_map([symbol])
         if symbol not in id_map:
             raise ValueError(f"Could not resolve CMC ID for {symbol}")
             
         cmc_id = id_map[symbol]
-        endpoint = "/v2/cryptocurrency/ohlcv/historical"
+        endpoint = "/v3/cryptocurrency/quotes/historical"
         
         # Calculate time range
         end_time = datetime.now()
@@ -107,25 +125,50 @@ class CMCClient:
         
         params = {
             "id": cmc_id,
-            "time_period": "daily",
-            "time_start": int(start_time.timestamp()),
-            "time_end": int(end_time.timestamp())
+            "interval": "1d",
+            "time_start": start_time.strftime("%Y-%m-%d"),
+            "time_end": end_time.strftime("%Y-%m-%d"),
         }
         
         data = self._request(endpoint, params)
         
         bars = []
-        if 'quotes' in data:
-            for item in data['quotes']:
-                quote = item['quote']['USD']
-                bars.append({
-                    'timestamp': pd.to_datetime(quote['timestamp']),
-                    'open': quote['open'],
-                    'high': quote['high'],
-                    'low': quote['low'],
-                    'close': quote['close'],
-                    'volume': quote['volume']
-                })
+        quote_container = None
+        if isinstance(data, dict):
+            if str(cmc_id) in data:
+                quote_container = data[str(cmc_id)]
+            elif "quotes" in data:
+                quote_container = data
+
+        quote_points = []
+        if isinstance(quote_container, dict):
+            quote_points = quote_container.get("quotes", [])
+
+        for item in quote_points:
+            quote = item.get("quote", {}).get("USD", {})
+            timestamp = (
+                item.get("timestamp") or
+                item.get("time_open") or
+                quote.get("timestamp") or
+                quote.get("last_updated")
+            )
+            close_price = quote.get("price")
+            if timestamp is None or close_price is None:
+                continue
+
+            volume = _coalesce_value(
+                quote.get("volume_24h"),
+                quote.get("volume"),
+                0.0
+            )
+            bars.append({
+                'timestamp': pd.to_datetime(timestamp),
+                'open': close_price,
+                'high': close_price,
+                'low': close_price,
+                'close': close_price,
+                'volume': volume
+            })
                 
         df = pd.DataFrame(bars)
         if not df.empty:

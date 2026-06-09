@@ -4,15 +4,16 @@ This repository contains the **CADR** strategy skill for AI Agents, built for th
 
 ## Overview
 
-The CADR skill allows AI agents to detect cross-asset divergences between cryptocurrency pairs (e.g., BTC/ETH) and generate robust, backtestable mean-reversion trading strategy specifications. It relies entirely on CoinMarketCap data via the CMC API and MCP Server.
+The CADR skill allows AI agents to detect cross-asset divergences between cryptocurrency pairs (e.g., BTC/ETH) and generate backtestable or live-thesis mean-reversion strategy specifications. It is now designed for **CoinMarketCap Agent Hub / CMC MCP first**, with direct REST usage kept as a fallback.
 
 ## Features
 
-- **Divergence Detection**: Identifies when historically correlated assets break their correlation using z-scores of their price spread.
-- **Regime Awareness**: Classifies market regimes (Risk On, Risk Off, Crisis) using Fear & Greed indices and Bitcoin dominance.
+- **CMC Agent Hub First**: Uses CMC MCP tools for quotes, technicals, narratives, macro events, news, derivatives, and market-wide context.
+- **Agentic Pair Selection**: Scores divergence opportunities using relative performance, RSI/MACD dislocation, narrative overlap, and macro regime.
+- **Regime Awareness**: Classifies market regimes (Risk On, Risk Off, Crisis) using Fear & Greed and Bitcoin dominance heuristics.
 - **Dynamic Risk Management**: Adjusts position sizing and stop-loss levels based on market regime and signal conviction.
-- **Backtesting Engine**: Simulates the generated strategy against historical OHLCV data to provide performance metrics (Win Rate, Sharpe Ratio, Max Drawdown).
-- **JSON Strategy Spec**: Outputs a structured JSON specification that can be consumed by trading executors.
+- **Backtesting Engine**: Supports optional backtests with mark-to-market equity tracking and end-of-period liquidation when historical price series are available.
+- **Structured Output**: Emits strategy specs with evidence, invalidation criteria, catalysts, thresholds, and market context.
 
 ## Setup
 
@@ -20,17 +21,44 @@ The CADR skill allows AI agents to detect cross-asset divergences between crypto
    ```bash
    pip install -r requirements.txt
    ```
+   The project expects `pydantic` v2 APIs.
 
-2. Copy `.env.example` to `.env` and add your CoinMarketCap Pro API Key. If you don't provide one, the sandbox API will be used.
+2. Configure CoinMarketCap Agent Hub / CMC MCP using the example config in [cmc_mcp_config.example.json](/D:/CADR/cmc_mcp_config.example.json:1). The MCP endpoint from CMC docs is:
+   ```json
+   {
+     "mcpServers": {
+       "cmc-mcp": {
+         "url": "https://mcp.coinmarketcap.com/mcp",
+         "headers": {
+           "X-CMC-MCP-API-KEY": "your-api-key"
+         }
+       }
+     }
+   }
+   ```
+
+3. For REST fallback mode only, copy `.env.example` to `.env` and add your CoinMarketCap Pro API Key.
    ```bash
    cp .env.example .env
    ```
 
 ## Usage
 
-Agents can trigger this skill using the workflow defined in `SKILL.md`.
+Agents can trigger this skill using the workflow defined in [SKILL.md](/D:/CADR/SKILL.md:1).
 
-To run a manual test and see the full pipeline in action:
+For an agent-native demonstration that mirrors CMC MCP payloads:
+
+```bash
+python examples/run_agent_workflow.py
+```
+
+For a live CoinMarketCap Skill Hub run using `find_skill` + `execute_skill`:
+
+```bash
+python examples/run_skill_hub_daily_market.py
+```
+
+For the REST fallback pipeline:
 
 ```bash
 python examples/run_strategy.py
@@ -38,8 +66,11 @@ python examples/run_strategy.py
 
 ## Project Structure
 
-- `SKILL.md`: The manifest and instructions for the AI Agent Hub.
+- `SKILL.md`: The MCP-first skill manifest and workflow for CoinMarketCap Agent Hub.
+- `cmc_mcp_config.example.json`: Example MCP client configuration for the CMC Agent Hub endpoint.
 - `cadr/`: The core Python package containing the data layer, analysis engine, strategy generator, and backtester.
+- `cadr/skill_hub/`: A Skill Hub client and pipeline layer for `find_skill` / `execute_skill`.
+- `cadr/agent/`: The agent orchestration layer that converts CMC MCP snapshots into strategy specs.
 - `examples/`: Example scripts showing how to use the package.
 - `tests/`: Unit tests for the core logic.
 
