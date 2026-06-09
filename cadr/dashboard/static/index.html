@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CADR Control Room</title>
-    <link rel="stylesheet" href="/static/styles.css?v=6" />
+    <link rel="stylesheet" href="/static/styles.css?v=7" />
   </head>
   <body>
     <div class="page-shell">
@@ -133,6 +133,8 @@ ETH/ADA</textarea>
               <div class="watchlist-actions">
                 <button id="save-watchlist" class="primary-btn">Save watchlist</button>
                 <button id="run-monitor-now" class="secondary-btn">Run monitor now</button>
+                <button id="save-snapshot" class="secondary-btn">Save snapshot</button>
+                <button id="evaluate-snapshot" class="secondary-btn">Evaluate snapshot</button>
                 <button id="evaluate-forecasts" class="secondary-btn">Evaluate forecasts</button>
               </div>
 
@@ -148,6 +150,14 @@ ETH/ADA</textarea>
                 <div class="subpanel">
                   <h3 id="recent-forecasts-title">Recent Forecasts</h3>
                   <div id="recent-forecasts" class="forecast-list"></div>
+                </div>
+                <div class="subpanel">
+                  <h3 id="snapshot-summary-title">Snapshot Status</h3>
+                  <div id="snapshot-summary" class="stacked-copy"></div>
+                </div>
+                <div class="subpanel">
+                  <h3 id="snapshot-evaluation-title">Snapshot Evaluation</h3>
+                  <div id="snapshot-evaluation" class="stacked-copy"></div>
                 </div>
               </div>
             </section>
@@ -212,6 +222,6 @@ ETH/ADA</textarea>
       </main>
     </div>
 
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
   </body>
 </html>

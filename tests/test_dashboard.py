@@ -131,7 +131,23 @@ def test_dashboard_api_uses_runtime_service_override():
             self.storage = FakeMonitorStorage()
 
         def get_dashboard_snapshot(self):
-            return {"stats": {"monitored_pairs": 1}, "pair_signals": [], "recent_runs": []}
+            return {
+                "stats": {"monitored_pairs": 1},
+                "pair_signals": [],
+                "recent_runs": [],
+                "snapshots": {
+                    "latest_snapshot": {
+                        "generated_at": "2026-06-09T00:05:00Z",
+                        "latest_pair_count": 1,
+                    },
+                    "latest_snapshot_path": "log/cadr_dashboard_snapshot_latest.json",
+                    "latest_evaluation": {
+                        "evaluated_at": "2026-06-10T00:05:00Z",
+                        "output_path": "log/evaluations/cadr_snapshot_evaluation.json",
+                        "summary": {"wins": 1, "losses": 0, "flat": 0, "skipped": 0},
+                    },
+                },
+            }
 
         def get_pair_detail(self, pair):
             return {"latest": {"pair": pair}, "history": []}
@@ -160,6 +176,12 @@ def test_dashboard_api_uses_runtime_service_override():
         def evaluate_due_forecasts(self):
             return {"evaluated": 1, "summary": {"wins": 1}}
 
+        def export_dashboard_snapshot(self):
+            return {"generated_at": "2026-06-09T00:05:00Z", "pair_count": 1}
+
+        def evaluate_dashboard_snapshot(self, snapshot_path=None):
+            return {"summary": {"evaluated": 1, "wins": 1, "losses": 0, "flat": 0, "skipped": 0}}
+
     app.state.dashboard_storage = FakeStorage()
     app.state.dashboard_service = FakeService()
 
@@ -186,3 +208,5 @@ def test_dashboard_api_uses_runtime_service_override():
         assert client.post("/api/monitor/run").json()["force"] is True
         assert client.get("/api/forecasts").json()["items"][0]["pair"] == "BTC/ETH"
         assert client.post("/api/forecasts/evaluate", json={"force": False}).json()["evaluated"] == 1
+        assert client.post("/api/snapshots/export").json()["pair_count"] == 1
+        assert client.post("/api/snapshots/evaluate", json={"snapshot_path": None}).json()["summary"]["evaluated"] == 1

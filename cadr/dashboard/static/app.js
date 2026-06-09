@@ -37,11 +37,16 @@ const TRANSLATIONS = {
     watchlistEditorLabel: "Pairs, one per line",
     saveWatchlist: "Save watchlist",
     runMonitorNow: "Run monitor now",
+    saveSnapshot: "Save snapshot",
+    evaluateSnapshot: "Evaluate snapshot",
     evaluateForecasts: "Evaluate forecasts",
     forecastSummaryTitle: "Forecast Summary",
     recentForecastsTitle: "Recent Forecasts",
+    snapshotSummaryTitle: "Snapshot Status",
+    snapshotEvaluationTitle: "Snapshot Evaluation",
     forecastSummaryEmpty: "No forecast checkpoints have been saved yet.",
     watchlistStatusIdle: "Watchlist settings will appear here.",
+    snapshotStatusIdle: "Snapshot tools are ready.",
     monitorEnabledYes: "Enabled",
     monitorEnabledNo: "Disabled",
     monitorNextRun: "Next run",
@@ -56,10 +61,22 @@ const TRANSLATIONS = {
     dueAt: "Due",
     outcome: "Outcome",
     noForecasts: "No forecast checkpoints yet.",
+    noSnapshotYet: "No snapshot has been saved yet.",
+    noSnapshotEvaluationYet: "No snapshot evaluation has been run yet.",
+    snapshotGeneratedAt: "Snapshot generated",
+    snapshotPath: "Snapshot file",
+    snapshotPairs: "Pairs in snapshot",
+    evaluationAt: "Evaluation time",
+    evaluationFile: "Evaluation file",
+    skipped: "skipped",
     saveWatchlistAction: "Save watchlist",
     runMonitorAction: "Run monitor",
+    saveSnapshotAction: "Save snapshot",
+    evaluateSnapshotAction: "Evaluate snapshot",
     evaluateForecastsAction: "Evaluate forecasts",
     watchlistSaved: "Watchlist updated successfully.",
+    snapshotSaved: "Snapshot saved successfully.",
+    snapshotEvaluatedMessage: "Snapshot evaluated: {count} pairs processed.",
     forecastsEvaluated: "{count} forecasts evaluated.",
     pendingOutcome: "Pending",
     evaluatedOutcome: "Evaluated",
@@ -196,11 +213,16 @@ const TRANSLATIONS = {
     watchlistEditorLabel: "Пары, по одной на строку",
     saveWatchlist: "Сохранить watchlist",
     runMonitorNow: "Запустить монитор сейчас",
+    saveSnapshot: "Сохранить snapshot",
+    evaluateSnapshot: "Проверить snapshot",
     evaluateForecasts: "Проверить прогнозы",
     forecastSummaryTitle: "Сводка прогнозов",
     recentForecastsTitle: "Последние прогнозы",
+    snapshotSummaryTitle: "Статус snapshot",
+    snapshotEvaluationTitle: "Проверка snapshot",
     forecastSummaryEmpty: "Точки входа пока не сохранены.",
     watchlistStatusIdle: "Здесь появятся настройки watchlist.",
+    snapshotStatusIdle: "Инструменты snapshot готовы.",
     monitorEnabledYes: "Включён",
     monitorEnabledNo: "Выключен",
     monitorNextRun: "Следующий запуск",
@@ -215,10 +237,22 @@ const TRANSLATIONS = {
     dueAt: "Проверка",
     outcome: "Итог",
     noForecasts: "Сохранённых точек входа пока нет.",
+    noSnapshotYet: "Snapshot ещё не сохранён.",
+    noSnapshotEvaluationYet: "Проверка snapshot ещё не запускалась.",
+    snapshotGeneratedAt: "Snapshot создан",
+    snapshotPath: "Файл snapshot",
+    snapshotPairs: "Пар в snapshot",
+    evaluationAt: "Время проверки",
+    evaluationFile: "Файл проверки",
+    skipped: "пропущено",
     saveWatchlistAction: "Сохранение watchlist",
     runMonitorAction: "Запуск монитора",
+    saveSnapshotAction: "Сохранение snapshot",
+    evaluateSnapshotAction: "Проверка snapshot",
     evaluateForecastsAction: "Проверка прогнозов",
     watchlistSaved: "Watchlist успешно обновлён.",
+    snapshotSaved: "Snapshot успешно сохранён.",
+    snapshotEvaluatedMessage: "Snapshot проверен: обработано пар {count}.",
     forecastsEvaluated: "Проверено прогнозов: {count}.",
     pendingOutcome: "В ожидании",
     evaluatedOutcome: "Проверено",
@@ -295,6 +329,7 @@ const TRANSLATIONS = {
     running: "выполняется",
     pending: "в ожидании",
     evaluated: "проверено",
+    skipped: "пропущено",
     unknown: "неизвестно",
     ok: "ok",
     error: "ошибка",
@@ -1734,9 +1769,13 @@ function applyStaticTranslations() {
     "watchlist-editor-label": "watchlistEditorLabel",
     "save-watchlist": "saveWatchlist",
     "run-monitor-now": "runMonitorNow",
+    "save-snapshot": "saveSnapshot",
+    "evaluate-snapshot": "evaluateSnapshot",
     "evaluate-forecasts": "evaluateForecasts",
     "forecast-summary-title": "forecastSummaryTitle",
     "recent-forecasts-title": "recentForecastsTitle",
+    "snapshot-summary-title": "snapshotSummaryTitle",
+    "snapshot-evaluation-title": "snapshotEvaluationTitle",
     "th-pair": "pair",
     "th-status": "status",
     "th-direction": "direction",
@@ -1918,6 +1957,38 @@ function renderForecasts(forecasts) {
       </article>
     `)
     .join("");
+}
+
+function renderSnapshotTools(snapshotState) {
+  const summary = document.getElementById("snapshot-summary");
+  const evaluation = document.getElementById("snapshot-evaluation");
+  const latestSnapshot = snapshotState?.latest_snapshot;
+  const latestEvaluation = snapshotState?.latest_evaluation;
+
+  if (!latestSnapshot) {
+    summary.innerHTML = `<div class="muted">${escapeHtml(t("noSnapshotYet"))}</div>`;
+  } else {
+    summary.innerHTML = `
+      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotGeneratedAt"))}</span><strong>${escapeHtml(formatDateTime(latestSnapshot.generated_at, "unknown"))}</strong></div>
+      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotPairs"))}</span><span>${escapeHtml(latestSnapshot.latest_pair_count ?? 0)}</span></div>
+      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotPath"))}</span><span>${escapeHtml(snapshotState?.latest_snapshot_path ?? "—")}</span></div>
+    `;
+  }
+
+  if (!latestEvaluation) {
+    evaluation.innerHTML = `<div class="muted">${escapeHtml(t("noSnapshotEvaluationYet"))}</div>`;
+    return;
+  }
+
+  const stats = latestEvaluation.summary ?? {};
+  evaluation.innerHTML = `
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("evaluationAt"))}</span><strong>${escapeHtml(formatDateTime(latestEvaluation.evaluated_at, "unknown"))}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastWins"))}</span><strong class="tone-ok">${escapeHtml(stats.wins ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastLosses"))}</span><strong class="tone-error">${escapeHtml(stats.losses ?? 0)}</strong></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastFlat"))}</span><span>${escapeHtml(stats.flat ?? 0)}</span></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("skipped"))}</span><span>${escapeHtml(stats.skipped ?? 0)}</span></div>
+    <div class="summary-line"><span class="summary-label">${escapeHtml(t("evaluationFile"))}</span><span>${escapeHtml(latestEvaluation.output_path ?? "—")}</span></div>
+  `;
 }
 
 function renderRunSummary(containerId, run, emptyTextKey) {
@@ -2212,6 +2283,7 @@ async function loadDashboard() {
   renderRunSummary("latest-scan", data.latest_scan, "noPairScan");
   renderWatchlistPanel(data.watchlist, data.monitor, data.forecasts);
   renderForecasts(data.forecasts);
+  renderSnapshotTools(data.snapshots);
   renderSignalBoard(data.pair_signals);
   renderPairTable(data.pair_signals);
   renderRuns(data.recent_runs);
@@ -2260,6 +2332,7 @@ document.getElementById("language-select").addEventListener("change", async (eve
     renderRunSummary("latest-scan", state.dashboard.latest_scan, "noPairScan");
     renderWatchlistPanel(state.dashboard.watchlist, state.dashboard.monitor, state.dashboard.forecasts);
     renderForecasts(state.dashboard.forecasts);
+    renderSnapshotTools(state.dashboard.snapshots);
     renderSignalBoard(state.dashboard.pair_signals);
     renderPairTable(state.dashboard.pair_signals);
     renderRuns(state.dashboard.recent_runs);
@@ -2345,6 +2418,33 @@ document.getElementById("evaluate-forecasts").addEventListener("click", async ()
     const status = document.getElementById("watchlist-status");
     status.dataset.userSet = "true";
     status.textContent = t("forecastsEvaluated", { count: result.evaluated ?? 0 });
+  }
+});
+
+document.getElementById("save-snapshot").addEventListener("click", async () => {
+  const result = await runAction(t("saveSnapshotAction"), () =>
+    api("/api/snapshots/export", {
+      method: "POST",
+    })
+  );
+  if (result) {
+    const status = document.getElementById("watchlist-status");
+    status.dataset.userSet = "true";
+    status.textContent = t("snapshotSaved");
+  }
+});
+
+document.getElementById("evaluate-snapshot").addEventListener("click", async () => {
+  const result = await runAction(t("evaluateSnapshotAction"), () =>
+    api("/api/snapshots/evaluate", {
+      method: "POST",
+      body: JSON.stringify({ snapshot_path: null }),
+    })
+  );
+  if (result) {
+    const status = document.getElementById("watchlist-status");
+    status.dataset.userSet = "true";
+    status.textContent = t("snapshotEvaluatedMessage", { count: result.summary?.evaluated ?? 0 });
   }
 });
 

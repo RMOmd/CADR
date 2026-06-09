@@ -34,6 +34,10 @@ class ForecastEvaluateRequest(BaseModel):
     force: bool = False
 
 
+class SnapshotEvaluateRequest(BaseModel):
+    snapshot_path: str | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     monitor = DashboardMonitor(app.state.dashboard_service)
@@ -127,5 +131,13 @@ def create_app() -> FastAPI:
         if payload.force:
             return request.app.state.dashboard_service.evaluate_due_forecasts()
         return request.app.state.dashboard_service.evaluate_due_forecasts()
+
+    @app.post("/api/snapshots/export")
+    def export_snapshot(request: Request):
+        return request.app.state.dashboard_service.export_dashboard_snapshot()
+
+    @app.post("/api/snapshots/evaluate")
+    def evaluate_snapshot(payload: SnapshotEvaluateRequest, request: Request):
+        return request.app.state.dashboard_service.evaluate_dashboard_snapshot(payload.snapshot_path)
 
     return app

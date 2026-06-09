@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import cadr.config as cfg
+from cadr.dashboard.snapshots import evaluate_dashboard_snapshot, export_dashboard_snapshot, get_snapshot_status
 from cadr.dashboard.storage import DashboardStorage
 from cadr.data.cmc_client import CMCClient
 from cadr.skill_hub import SkillHubClient, generate_cadr_strategy_from_skill_hub, run_daily_market_overview_preview
@@ -188,6 +189,7 @@ class DashboardService:
         watchlist = self.storage.list_watchlist_pairs(enabled_only=False)
         forecast_summary = self.storage.get_forecast_summary()
         recent_forecasts = self.storage.list_forecasts(limit=8)
+        snapshot_status = get_snapshot_status()
 
         ok_pairs = sum(1 for signal in pair_signals if signal["status"] == "ok")
         error_pairs = sum(1 for signal in pair_signals if signal["status"] == "error")
@@ -205,6 +207,7 @@ class DashboardService:
                 "recent": recent_forecasts,
                 "export_path": str(Path(cfg.CADR_FORECAST_EXPORT_PATH).resolve()),
             },
+            "snapshots": snapshot_status,
             "stats": {
                 "monitored_pairs": len([pair for pair in watchlist if pair["enabled"]]),
                 "latest_pairs_available": len(pair_signals),
@@ -266,6 +269,16 @@ class DashboardService:
             "items": self.storage.list_forecasts(limit=limit),
             "export_path": str(Path(cfg.CADR_FORECAST_EXPORT_PATH).resolve()),
         }
+
+    def export_dashboard_snapshot(self) -> Dict[str, Any]:
+        return export_dashboard_snapshot(
+            self.storage,
+            self.cmc_client,
+            db_path=str(self.storage.db_path),
+        )
+
+    def evaluate_dashboard_snapshot(self, snapshot_path: str | None = None) -> Dict[str, Any]:
+        return evaluate_dashboard_snapshot(snapshot_path, self.cmc_client)
 
     def evaluate_due_forecasts(self) -> Dict[str, Any]:
         now_iso = utc_now_iso()
