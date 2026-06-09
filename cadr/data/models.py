@@ -61,3 +61,5 @@ class BacktestResult(BaseModel):
     max_drawdown_pct: float
     profit_factor: float
     calmar_ratio: float
+    avg_holding_period_days: float = 0.0
+    total_cost_drag_pct: float = 0.0

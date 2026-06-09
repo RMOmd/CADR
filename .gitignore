@@ -14,6 +14,7 @@ venv.bak/
 
 # Pytest
 .pytest_cache/
+.pytest_tmp/
 .coverage
 htmlcov/
 
@@ -24,3 +25,4 @@ htmlcov/
 log/*.db
 log/*.log
 log/*.png
+log/*.json

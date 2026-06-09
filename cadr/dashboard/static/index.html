@@ -4,15 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CADR Control Room</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2" />
+    <link rel="stylesheet" href="/static/styles.css?v=6" />
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy-block">
-          <p class="eyebrow">CADR Control Room</p>
-          <h1>Cross-asset monitoring built for decision-making, not raw dumps.</h1>
-          <p class="hero-copy">
+          <p id="hero-eyebrow" class="eyebrow">CADR Control Room</p>
+          <h1 id="hero-title">Cross-asset monitoring built for decision-making, not raw dumps.</h1>
+          <p id="hero-copy" class="hero-copy">
             Watch divergence pressure, signal quality, and market regime in one screen. Keep the
             payload available on demand, but let the interface surface what matters first.
           </p>
@@ -20,7 +20,13 @@
 
         <section class="hero-side panel">
           <div class="panel-header compact">
-            <h2>Actions</h2>
+            <div class="actions-head">
+              <h2 id="actions-title">Actions</h2>
+              <label class="language-control">
+                <span id="language-label">Language</span>
+                <select id="language-select"></select>
+              </label>
+            </div>
             <span id="snapshot-status" class="status-pill">loading</span>
           </div>
 
@@ -33,20 +39,34 @@
           <form id="pair-form" class="pair-form">
             <div class="pair-form-grid">
               <label>
-                Base asset
+                <span id="label-base-asset">Base asset</span>
                 <input id="base-asset" value="BTC" />
               </label>
               <label>
-                Quote asset
+                <span id="label-quote-asset">Quote asset</span>
                 <input id="quote-asset" value="ETH" />
               </label>
               <label class="wide-field">
-                Lookback days
+                <span id="label-lookback-days">Lookback days</span>
                 <input id="lookback-days" type="number" min="30" max="365" value="90" />
               </label>
             </div>
-            <button type="submit" class="primary-btn">Run Custom Pair</button>
+            <button id="run-custom-pair" type="submit" class="primary-btn">Run Custom Pair</button>
           </form>
+
+          <div id="busy-indicator" class="busy-indicator" aria-live="polite" aria-hidden="true">
+            <div class="busy-indicator-head">
+              <span class="busy-spinner" aria-hidden="true"></span>
+              <div class="busy-copy">
+                <strong id="busy-title">Processing request</strong>
+                <span id="busy-subtitle">If you see this, the action has started and CADR is waiting for data.</span>
+              </div>
+              <span id="busy-timer" class="busy-timer">0s</span>
+            </div>
+            <div class="busy-progress" aria-hidden="true">
+              <span class="busy-progress-bar"></span>
+            </div>
+          </div>
 
           <div id="action-log" class="callout">Dashboard is waiting for the next action.</div>
         </section>
@@ -56,18 +76,18 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
-              <h2>System Snapshot</h2>
-              <p class="panel-caption">High-level health, cadence, and latest system outputs.</p>
+              <h2 id="system-snapshot-title">System Snapshot</h2>
+              <p id="system-snapshot-caption" class="panel-caption">High-level health, cadence, and latest system outputs.</p>
             </div>
           </div>
           <div id="stats-grid" class="stats-grid"></div>
           <div class="subpanels">
             <div class="subpanel">
-              <h3>Latest Daily Overview</h3>
+              <h3 id="latest-overview-title">Latest Daily Overview</h3>
               <div id="latest-overview" class="stacked-copy"></div>
             </div>
             <div class="subpanel">
-              <h3>Latest Scan</h3>
+              <h3 id="latest-scan-title">Latest Scan</h3>
               <div id="latest-scan" class="stacked-copy"></div>
             </div>
           </div>
@@ -76,8 +96,69 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
-              <h2>Signal Board</h2>
-              <p class="panel-caption">Best opportunities and biggest dislocations ranked visually.</p>
+              <h2 id="watchlist-title">Watchlist Monitor</h2>
+              <p id="watchlist-caption" class="panel-caption">Edit the default pair set, keep the background monitor running, and save entry checkpoints for next-day validation.</p>
+            </div>
+          </div>
+          <div class="watchlist-layout">
+            <section class="watchlist-section">
+              <div class="watchlist-toolbar">
+                <label class="watchlist-field checkbox-field">
+                  <span id="watchlist-enabled-label">Background monitor</span>
+                  <input id="watchlist-enabled" type="checkbox" />
+                </label>
+                <label class="watchlist-field">
+                  <span id="monitor-interval-label">Interval, minutes</span>
+                  <input id="monitor-interval" type="number" min="3" max="60" value="5" />
+                </label>
+                <label class="watchlist-field">
+                  <span id="monitor-lookback-label">Lookback days</span>
+                  <input id="monitor-lookback" type="number" min="30" max="365" value="90" />
+                </label>
+              </div>
+
+              <label class="watchlist-editor">
+                <span id="watchlist-editor-label">Pairs, one per line</span>
+                <textarea id="watchlist-editor" rows="8" spellcheck="false">BTC/ETH
+ETH/SOL
+BTC/BNB
+ETH/BNB
+BTC/XRP
+SOL/AVAX
+BTC/SOL
+ETH/AVAX
+ETH/ADA</textarea>
+              </label>
+
+              <div class="watchlist-actions">
+                <button id="save-watchlist" class="primary-btn">Save watchlist</button>
+                <button id="run-monitor-now" class="secondary-btn">Run monitor now</button>
+                <button id="evaluate-forecasts" class="secondary-btn">Evaluate forecasts</button>
+              </div>
+
+              <div id="watchlist-status" class="callout">Watchlist settings will appear here.</div>
+            </section>
+
+            <section class="watchlist-section">
+              <div class="subpanels single-column">
+                <div class="subpanel">
+                  <h3 id="forecast-summary-title">Forecast Summary</h3>
+                  <div id="forecast-summary" class="stacked-copy"></div>
+                </div>
+                <div class="subpanel">
+                  <h3 id="recent-forecasts-title">Recent Forecasts</h3>
+                  <div id="recent-forecasts" class="forecast-list"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2 id="signal-board-title">Signal Board</h2>
+              <p id="signal-board-caption" class="panel-caption">Best opportunities and biggest dislocations ranked visually.</p>
             </div>
           </div>
           <div id="signal-board" class="signal-board"></div>
@@ -86,22 +167,22 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
-              <h2>Pair Monitor</h2>
-              <p class="panel-caption">Click a pair to inspect history, reasoning, and strategy state.</p>
+              <h2 id="pair-monitor-title">Pair Monitor</h2>
+              <p id="pair-monitor-caption" class="panel-caption">Click a pair to inspect history, reasoning, and strategy state.</p>
             </div>
           </div>
           <div class="table-shell">
             <table>
               <thead>
                 <tr>
-                  <th>Pair</th>
-                  <th>Status</th>
-                  <th>Direction</th>
-                  <th>Z-Score</th>
-                  <th>Conviction</th>
-                  <th>Divergence</th>
-                  <th>Correlation</th>
-                  <th>Regime</th>
+                  <th id="th-pair">Pair</th>
+                  <th id="th-status">Status</th>
+                  <th id="th-direction">Direction</th>
+                  <th id="th-zscore">Z-Score</th>
+                  <th id="th-conviction">Conviction</th>
+                  <th id="th-divergence">Divergence</th>
+                  <th id="th-correlation">Correlation</th>
+                  <th id="th-regime">Regime</th>
                 </tr>
               </thead>
               <tbody id="pair-table-body"></tbody>
@@ -112,8 +193,8 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
-              <h2>Pair Detail</h2>
-              <p class="panel-caption">Expanded view with signal summary, trend context, and optional raw payload.</p>
+              <h2 id="pair-detail-title">Pair Detail</h2>
+              <p id="pair-detail-caption" class="panel-caption">Expanded view with signal summary, trend context, and optional raw payload.</p>
             </div>
           </div>
           <div id="pair-detail" class="stacked-copy muted">Select a pair from the monitor to inspect it.</div>
@@ -122,8 +203,8 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
-              <h2>Recent Runs</h2>
-              <p class="panel-caption">Operational log of scans, overview pulls, and pair-specific jobs.</p>
+              <h2 id="recent-runs-title">Recent Runs</h2>
+              <p id="recent-runs-caption" class="panel-caption">Operational log of scans, overview pulls, and pair-specific jobs.</p>
             </div>
           </div>
           <div id="runs-list" class="runs-list"></div>
@@ -131,6 +212,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=2"></script>
+    <script src="/static/app.js?v=6"></script>
   </body>
 </html>

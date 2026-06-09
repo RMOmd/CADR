@@ -36,7 +36,9 @@ body {
 }
 
 button,
-input {
+input,
+textarea,
+select {
   font: inherit;
 }
 
@@ -112,6 +114,30 @@ input {
   display: grid;
   gap: 16px;
   align-content: start;
+}
+
+.actions-head {
+  display: grid;
+  gap: 10px;
+}
+
+.language-control {
+  display: grid;
+  gap: 6px;
+  max-width: 220px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.language-control select {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text);
 }
 
 .panel-header {
@@ -191,6 +217,25 @@ button:active {
   transform: translateY(0);
 }
 
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
+
+button:disabled {
+  opacity: 0.72;
+  transform: none;
+  box-shadow: none;
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.82;
+}
+
 .primary-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: #fff;
@@ -240,6 +285,71 @@ button:active {
   background: rgba(255, 255, 255, 0.8);
 }
 
+.watchlist-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+}
+
+.watchlist-section {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.watchlist-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.watchlist-field,
+.watchlist-editor {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.watchlist-field input,
+.watchlist-editor textarea {
+  width: 100%;
+  min-width: 0;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text);
+}
+
+.watchlist-editor textarea {
+  min-height: 190px;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, monospace;
+  line-height: 1.5;
+}
+
+.checkbox-field {
+  align-content: start;
+}
+
+.checkbox-field input {
+  width: 22px;
+  height: 22px;
+  margin-top: 8px;
+}
+
+.watchlist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.single-column {
+  grid-template-columns: 1fr;
+  margin-top: 0;
+}
+
 .callout {
   min-height: 60px;
   padding: 14px 16px;
@@ -249,9 +359,81 @@ button:active {
   line-height: 1.5;
 }
 
+.busy-indicator {
+  display: none;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(18, 94, 80, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(18, 94, 80, 0.10), rgba(255, 255, 255, 0.78));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.busy-indicator.active {
+  display: grid;
+}
+
+.busy-indicator-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.busy-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid rgba(18, 94, 80, 0.18);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+.busy-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.busy-copy strong {
+  font-size: 0.95rem;
+}
+
+.busy-copy span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.busy-timer {
+  align-self: start;
+  min-width: 48px;
+  text-align: right;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.busy-progress {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(29, 26, 22, 0.08);
+}
+
+.busy-progress-bar {
+  display: block;
+  width: 36%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(203, 110, 54, 0.9), rgba(18, 94, 80, 0.95));
+  animation: busy-slide 1.4s ease-in-out infinite;
+}
+
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
 }
 
@@ -365,6 +547,34 @@ button:active {
   line-height: 1.45;
 }
 
+.signal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signal-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.signal-tag-long {
+  background: rgba(33, 112, 79, 0.12);
+  color: var(--ok);
+}
+
+.signal-tag-short {
+  background: rgba(154, 61, 61, 0.12);
+  color: var(--danger);
+}
+
 .metric-rail {
   display: grid;
   gap: 10px;
@@ -384,6 +594,28 @@ button:active {
 
 .metric-row-head span:first-child {
   color: var(--muted);
+}
+
+.metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(29, 26, 22, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: help;
 }
 
 .metric-bar {
@@ -618,6 +850,35 @@ tbody tr.clickable {
   gap: 12px;
 }
 
+.forecast-list {
+  display: grid;
+  gap: 10px;
+}
+
+.forecast-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(216, 199, 170, 0.8);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.forecast-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.forecast-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .run-card {
   display: grid;
   gap: 8px;
@@ -641,9 +902,28 @@ tbody tr.clickable {
   color: var(--muted);
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes busy-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
 @media (max-width: 1200px) {
   .hero,
-  .detail-layout {
+  .detail-layout,
+  .watchlist-layout {
     grid-template-columns: 1fr;
   }
 
@@ -666,7 +946,8 @@ tbody tr.clickable {
   .stats-grid,
   .subpanels,
   .detail-grid,
-  .pair-form-grid {
+  .pair-form-grid,
+  .watchlist-toolbar {
     grid-template-columns: 1fr;
   }
 

@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -98,6 +99,8 @@ class SkillHubClient:
         api_key: Optional[str] = cfg.CMC_SKILL_HUB_API_KEY,
         base_url: str = cfg.CMC_SKILL_HUB_URL,
         tool_timeout_sec: int = cfg.CMC_SKILL_HUB_TOOL_TIMEOUT_SEC,
+        retry_count: int = cfg.CMC_SKILL_HUB_RETRY_COUNT,
+        retry_backoff_sec: float = cfg.CMC_SKILL_HUB_RETRY_BACKOFF_SEC,
     ):
         if not api_key:
             raise ValueError("CMC_SKILL_HUB_API_KEY is required to use the Skill Hub client.")
@@ -105,6 +108,8 @@ class SkillHubClient:
         self.api_key = api_key
         self.base_url = base_url
         self.tool_timeout_sec = tool_timeout_sec
+        self.retry_count = max(0, int(retry_count))
+        self.retry_backoff_sec = max(0.1, float(retry_backoff_sec))
         self.session = requests.Session()
         self.session.headers.update({
             "X-CMC-MCP-API-KEY": self.api_key,
@@ -123,13 +128,33 @@ class SkillHubClient:
         }
         self._next_id += 1
 
-        response = self.session.post(
-            self.base_url,
-            json=payload,
-            timeout=timeout or self.tool_timeout_sec,
-        )
-        response.raise_for_status()
-        message = _extract_event_payload(response.text)
+        attempts = self.retry_count + 1
+        last_error: Exception | None = None
+        message: Dict[str, Any] | None = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self.session.post(
+                    self.base_url,
+                    json=payload,
+                    timeout=timeout or self.tool_timeout_sec,
+                )
+                retryable = response.status_code == 429 or response.status_code >= 500
+                if retryable and attempt < attempts:
+                    time.sleep(self.retry_backoff_sec * attempt)
+                    continue
+
+                response.raise_for_status()
+                message = _extract_event_payload(response.text)
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    raise SkillHubError(f"CMC Skill Hub transport error after {attempts} attempts: {exc}") from exc
+                time.sleep(self.retry_backoff_sec * attempt)
+
+        if message is None:
+            raise SkillHubError(f"CMC Skill Hub request failed without a response payload: {last_error}")
 
         if "error" in message:
             error = message["error"]
