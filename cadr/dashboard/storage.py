@@ -1,8 +1,12 @@
 import json
+import math
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+
+_UNSET = object()
 
 
 class DashboardStorage:
@@ -104,8 +108,37 @@ class DashboardStorage:
                     signal_json TEXT,
                     evaluation_json TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS background_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    params_json TEXT,
+                    result_json TEXT,
+                    error TEXT,
+                    message TEXT,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    finished_at TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_runs_type_id
+                ON runs (run_type, id DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_pair_signals_pair_id
+                ON pair_signals (pair, id DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_trade_forecasts_status_due
+                ON trade_forecasts (status, due_at, id);
+
+                CREATE INDEX IF NOT EXISTS idx_trade_forecasts_pair_status
+                ON trade_forecasts (pair, direction, status, due_at);
+
+                CREATE INDEX IF NOT EXISTS idx_background_jobs_status_created
+                ON background_jobs (status, created_at, id);
                 """
             )
+            conn.execute("PRAGMA journal_mode=WAL")
 
     def seed_watchlist(
         self,
@@ -413,6 +446,122 @@ class DashboardStorage:
             )
             return int(cur.lastrowid)
 
+    def create_job(
+        self,
+        job_type: str,
+        *,
+        status: str,
+        created_at: str,
+        params: Optional[Dict[str, Any]] = None,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        with self.connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO background_jobs (
+                    job_type, status, params_json, message, created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    job_type,
+                    status,
+                    json.dumps(params) if params is not None else None,
+                    message,
+                    created_at,
+                ),
+            )
+            job_id = int(cur.lastrowid)
+        job = self.get_job(job_id)
+        if job is None:
+            raise RuntimeError(f"Background job {job_id} was not created.")
+        return job
+
+    def get_job(self, job_id: int) -> Optional[Dict[str, Any]]:
+        with self.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM background_jobs
+                WHERE id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+            return self._row_to_job(row) if row else None
+
+    def list_jobs(
+        self,
+        *,
+        statuses: Optional[Sequence[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        with self.connection() as conn:
+            if statuses:
+                placeholders = ", ".join("?" for _ in statuses)
+                rows = conn.execute(
+                    f"""
+                    SELECT *
+                    FROM background_jobs
+                    WHERE status IN ({placeholders})
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    tuple(statuses) + (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM background_jobs
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            return [self._row_to_job(row) for row in rows]
+
+    def start_job(self, job_id: int, *, started_at: str, message: Optional[str] = None) -> Dict[str, Any]:
+        return self._update_job(
+            job_id,
+            status="running",
+            started_at=started_at,
+            message=message,
+        )
+
+    def complete_job(
+        self,
+        job_id: int,
+        *,
+        finished_at: str,
+        result: Optional[Dict[str, Any]] = None,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self._update_job(
+            job_id,
+            status="completed",
+            finished_at=finished_at,
+            result=result,
+            message=message,
+            error=None,
+        )
+
+    def fail_job(
+        self,
+        job_id: int,
+        *,
+        finished_at: str,
+        error: str,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self._update_job(
+            job_id,
+            status="error",
+            finished_at=finished_at,
+            result=None,
+            error=error,
+            message=message,
+        )
+
     def has_pending_forecast(self, pair: str, direction: str, due_after_iso: str) -> bool:
         with self.connection() as conn:
             row = conn.execute(
@@ -553,7 +702,70 @@ class DashboardStorage:
     def _decode_json(value: Optional[str]) -> Any:
         if value is None:
             return None
-        return json.loads(value)
+        return DashboardStorage._sanitize_json_numbers(json.loads(value))
+
+    @staticmethod
+    def _sanitize_json_numbers(value: Any) -> Any:
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        if isinstance(value, list):
+            return [DashboardStorage._sanitize_json_numbers(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: DashboardStorage._sanitize_json_numbers(item)
+                for key, item in value.items()
+            }
+        return value
+
+    def _update_job(
+        self,
+        job_id: int,
+        *,
+        status: Optional[str] = None,
+        started_at: Any = _UNSET,
+        finished_at: Any = _UNSET,
+        result: Any = _UNSET,
+        error: Any = _UNSET,
+        message: Any = _UNSET,
+    ) -> Dict[str, Any]:
+        current = self.get_job(job_id)
+        if current is None:
+            raise KeyError(job_id)
+
+        payload = {
+            "status": current["status"] if status is None else status,
+            "started_at": current["started_at"] if started_at is _UNSET else started_at,
+            "finished_at": current["finished_at"] if finished_at is _UNSET else finished_at,
+            "result": current["result"] if result is _UNSET else result,
+            "error": current["error"] if error is _UNSET else error,
+            "message": current["message"] if message is _UNSET else message,
+        }
+        with self.connection() as conn:
+            conn.execute(
+                """
+                UPDATE background_jobs
+                SET status = ?,
+                    started_at = ?,
+                    finished_at = ?,
+                    result_json = ?,
+                    error = ?,
+                    message = ?
+                WHERE id = ?
+                """,
+                (
+                    payload["status"],
+                    payload["started_at"],
+                    payload["finished_at"],
+                    json.dumps(payload["result"]) if payload["result"] is not None else None,
+                    payload["error"],
+                    payload["message"],
+                    job_id,
+                ),
+            )
+        updated = self.get_job(job_id)
+        if updated is None:
+            raise RuntimeError(f"Background job {job_id} disappeared after update.")
+        return updated
 
     def _row_to_run(self, row: sqlite3.Row) -> Dict[str, Any]:
         return {
@@ -638,4 +850,18 @@ class DashboardStorage:
             "pnl_pct": row["pnl_pct"],
             "signal": self._decode_json(row["signal_json"]),
             "evaluation": self._decode_json(row["evaluation_json"]),
+        }
+
+    def _row_to_job(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "job_type": row["job_type"],
+            "status": row["status"],
+            "params": self._decode_json(row["params_json"]),
+            "result": self._decode_json(row["result_json"]),
+            "error": row["error"],
+            "message": row["message"],
+            "created_at": row["created_at"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
         }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CADR Control Room</title>
-    <link rel="stylesheet" href="/static/styles.css?v=7" />
+    <link rel="stylesheet" href="/static/styles.css?v=25" />
   </head>
   <body>
     <div class="page-shell">
@@ -16,6 +16,7 @@
             Watch divergence pressure, signal quality, and market regime in one screen. Keep the
             payload available on demand, but let the interface surface what matters first.
           </p>
+          <div id="hero-metrics" class="hero-metrics"></div>
         </div>
 
         <section class="hero-side panel">
@@ -30,13 +31,13 @@
             <span id="snapshot-status" class="status-pill">loading</span>
           </div>
 
-          <div class="hero-actions">
+          <div class="hero-actions hero-card">
             <button id="refresh-dashboard" class="primary-btn">Refresh Dashboard</button>
             <button id="run-daily" class="secondary-btn">Run Daily Overview</button>
             <button id="run-default-scan" class="secondary-btn">Run Pair Scan</button>
           </div>
 
-          <form id="pair-form" class="pair-form">
+          <form id="pair-form" class="pair-form hero-card">
             <div class="pair-form-grid">
               <label>
                 <span id="label-base-asset">Base asset</span>
@@ -54,7 +55,7 @@
             <button id="run-custom-pair" type="submit" class="primary-btn">Run Custom Pair</button>
           </form>
 
-          <div id="busy-indicator" class="busy-indicator" aria-live="polite" aria-hidden="true">
+          <div id="busy-indicator" class="busy-indicator hero-card" aria-live="polite" aria-hidden="true">
             <div class="busy-indicator-head">
               <span class="busy-spinner" aria-hidden="true"></span>
               <div class="busy-copy">
@@ -68,7 +69,7 @@
             </div>
           </div>
 
-          <div id="action-log" class="callout">Dashboard is waiting for the next action.</div>
+          <div id="action-log" class="callout ops-log">Dashboard is waiting for the next action.</div>
         </section>
       </header>
 
@@ -82,11 +83,11 @@
           </div>
           <div id="stats-grid" class="stats-grid"></div>
           <div class="subpanels">
-            <div class="subpanel">
+            <div class="subpanel summary-subpanel">
               <h3 id="latest-overview-title">Latest Daily Overview</h3>
               <div id="latest-overview" class="stacked-copy"></div>
             </div>
-            <div class="subpanel">
+            <div class="subpanel summary-subpanel">
               <h3 id="latest-scan-title">Latest Scan</h3>
               <div id="latest-scan" class="stacked-copy"></div>
             </div>
@@ -103,54 +104,47 @@
           <div class="watchlist-layout">
             <section class="watchlist-section">
               <div class="watchlist-toolbar">
-                <label class="watchlist-field checkbox-field">
+                <label class="watchlist-field watchlist-field-card checkbox-field">
                   <span id="watchlist-enabled-label">Background monitor</span>
                   <input id="watchlist-enabled" type="checkbox" />
                 </label>
-                <label class="watchlist-field">
+                <label class="watchlist-field watchlist-field-card">
                   <span id="monitor-interval-label">Interval, minutes</span>
                   <input id="monitor-interval" type="number" min="3" max="60" value="5" />
                 </label>
-                <label class="watchlist-field">
+                <label class="watchlist-field watchlist-field-card">
                   <span id="monitor-lookback-label">Lookback days</span>
                   <input id="monitor-lookback" type="number" min="30" max="365" value="90" />
                 </label>
               </div>
 
-              <label class="watchlist-editor">
-                <span id="watchlist-editor-label">Pairs, one per line</span>
+              <div class="watchlist-editor-shell">
+                <div class="watchlist-editor-head">
+                  <span id="watchlist-editor-label">Pairs, one per line</span>
+                  <span id="watchlist-pair-count" class="mini-badge">0</span>
+                </div>
                 <textarea id="watchlist-editor" rows="8" spellcheck="false">BTC/ETH
 ETH/SOL
-BTC/BNB
-ETH/BNB
-BTC/XRP
 SOL/AVAX
 BTC/SOL
-ETH/AVAX
-ETH/ADA</textarea>
-              </label>
-
-              <div class="watchlist-actions">
-                <button id="save-watchlist" class="primary-btn">Save watchlist</button>
-                <button id="run-monitor-now" class="secondary-btn">Run monitor now</button>
-                <button id="save-snapshot" class="secondary-btn">Save snapshot</button>
-                <button id="evaluate-snapshot" class="secondary-btn">Evaluate snapshot</button>
-                <button id="evaluate-forecasts" class="secondary-btn">Evaluate forecasts</button>
+ETH/AVAX</textarea>
               </div>
 
-              <div id="watchlist-status" class="callout">Watchlist settings will appear here.</div>
-            </section>
+              <div class="watchlist-actions">
+                <div class="watchlist-actions-main">
+                  <button id="save-watchlist" class="primary-btn">Save watchlist</button>
+                  <button id="run-monitor-now" class="secondary-btn">Run monitor now</button>
+                </div>
+                <div class="watchlist-actions-utility">
+                  <button id="save-snapshot" class="ghost-btn">Save snapshot</button>
+                  <button id="evaluate-snapshot" class="ghost-btn">Evaluate snapshot</button>
+                  <button id="evaluate-forecasts" class="ghost-btn">Evaluate forecasts</button>
+                </div>
+              </div>
 
-            <section class="watchlist-section">
-              <div class="subpanels single-column">
-                <div class="subpanel">
-                  <h3 id="forecast-summary-title">Forecast Summary</h3>
-                  <div id="forecast-summary" class="stacked-copy"></div>
-                </div>
-                <div class="subpanel">
-                  <h3 id="recent-forecasts-title">Recent Forecasts</h3>
-                  <div id="recent-forecasts" class="forecast-list"></div>
-                </div>
+              <div id="watchlist-status" class="callout watchlist-status-card">Watchlist settings will appear here.</div>
+
+              <div class="watchlist-meta-grid">
                 <div class="subpanel">
                   <h3 id="snapshot-summary-title">Snapshot Status</h3>
                   <div id="snapshot-summary" class="stacked-copy"></div>
@@ -158,6 +152,25 @@ ETH/ADA</textarea>
                 <div class="subpanel">
                   <h3 id="snapshot-evaluation-title">Snapshot Evaluation</h3>
                   <div id="snapshot-evaluation" class="stacked-copy"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="watchlist-section watchlist-side">
+              <div class="watchlist-side-stack">
+                <div class="subpanel">
+                  <div class="subpanel-head">
+                    <h3 id="forecast-summary-title">Forecast Summary</h3>
+                    <span id="forecast-summary-badge" class="mini-badge">0</span>
+                  </div>
+                  <div id="forecast-summary" class="stacked-copy"></div>
+                </div>
+                <div class="subpanel subpanel-scroll">
+                  <div class="subpanel-head">
+                    <h3 id="recent-forecasts-title">Recent Forecasts</h3>
+                    <span id="recent-forecasts-badge" class="mini-badge">0</span>
+                  </div>
+                  <div id="recent-forecasts" class="forecast-list"></div>
                 </div>
               </div>
             </section>
@@ -222,6 +235,6 @@ ETH/ADA</textarea>
       </main>
     </div>
 
-    <script src="/static/app.js?v=7"></script>
+    <script src="/static/app.js?v=25"></script>
   </body>
 </html>

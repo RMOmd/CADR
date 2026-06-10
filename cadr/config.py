@@ -21,19 +21,29 @@ DEFAULT_PAIRS = [
     ("BTC", "ETH"),
     ("ETH", "SOL"),
     ("BTC", "BNB"),
-    ("SOL", "AVAX")
+    ("SOL", "AVAX"),
 ]
-MONITORING_PAIRS = [
+
+# Confirmed watchlist focuses on the tightest liquid major pairs where we have
+# the best chance to accumulate repeatable evidence instead of noisy one-offs.
+CONFIRMED_MONITORING_PAIRS = [
     ("BTC", "ETH"),
     ("ETH", "SOL"),
-    ("BTC", "BNB"),
-    ("ETH", "BNB"),
-    ("BTC", "XRP"),
     ("SOL", "AVAX"),
     ("BTC", "SOL"),
     ("ETH", "AVAX"),
+]
+
+# Broader research universe stays available for manual scans, but the dashboard
+# defaults to the tighter confirmed set so the live monitor compounds cleaner data.
+RESEARCH_MONITORING_PAIRS = [
+    ("BTC", "BNB"),
+    ("ETH", "BNB"),
+    ("BTC", "XRP"),
     ("ETH", "ADA"),
 ]
+
+MONITORING_PAIRS = list(CONFIRMED_MONITORING_PAIRS)
 CADR_DASHBOARD_DB_PATH = os.getenv("CADR_DASHBOARD_DB_PATH", "log/cadr_dashboard.db")
 CADR_DASHBOARD_HOST = os.getenv("CADR_DASHBOARD_HOST", "127.0.0.1")
 CADR_DASHBOARD_PORT = int(os.getenv("CADR_DASHBOARD_PORT", "8010"))
@@ -42,7 +52,31 @@ CADR_MONITOR_INTERVAL_SEC = int(os.getenv("CADR_MONITOR_INTERVAL_SEC", "300"))
 CADR_MONITOR_LOOKBACK_DAYS = int(os.getenv("CADR_MONITOR_LOOKBACK_DAYS", "90"))
 CADR_MONITOR_POLL_SEC = int(os.getenv("CADR_MONITOR_POLL_SEC", "10"))
 CADR_FORECAST_HORIZON_HOURS = int(os.getenv("CADR_FORECAST_HORIZON_HOURS", "24"))
+CADR_FORECAST_MIN_HORIZON_HOURS = int(os.getenv("CADR_FORECAST_MIN_HORIZON_HOURS", "12"))
+CADR_FORECAST_MAX_HORIZON_HOURS = int(os.getenv("CADR_FORECAST_MAX_HORIZON_HOURS", "72"))
 CADR_FORECAST_EXPORT_PATH = os.getenv("CADR_FORECAST_EXPORT_PATH", "log/cadr_forecasts.json")
+CADR_FORECAST_MIN_CONVICTION = int(os.getenv("CADR_FORECAST_MIN_CONVICTION", "4"))
+CADR_FORECAST_MIN_CORRELATION = float(os.getenv("CADR_FORECAST_MIN_CORRELATION", "0.7"))
+CADR_FORECAST_MIN_ALIGNED_DAYS = int(os.getenv("CADR_FORECAST_MIN_ALIGNED_DAYS", "60"))
+CADR_FORECAST_REQUIRE_NON_DEFENSIVE = os.getenv("CADR_FORECAST_REQUIRE_NON_DEFENSIVE", "1") == "1"
+CADR_FORECAST_FLAT_BAND_PCT = float(os.getenv("CADR_FORECAST_FLAT_BAND_PCT", "0.05"))
+CADR_FORECAST_MAX_ABS_ZSCORE = float(os.getenv("CADR_FORECAST_MAX_ABS_ZSCORE", "8.0"))
+CADR_FORECAST_MAX_VOL_RATIO = float(os.getenv("CADR_FORECAST_MAX_VOL_RATIO", "8.0"))
+CADR_FORECAST_BLOCK_STABLE_LEGS = os.getenv("CADR_FORECAST_BLOCK_STABLE_LEGS", "1") == "1"
+CADR_SNAPSHOT_MAX_SIGNAL_AGE_HOURS = int(os.getenv("CADR_SNAPSHOT_MAX_SIGNAL_AGE_HOURS", "48"))
+CADR_SNAPSHOT_INCLUDE_NON_WATCHLIST = os.getenv("CADR_SNAPSHOT_INCLUDE_NON_WATCHLIST", "0") == "1"
+CADR_SNAPSHOT_REQUIRE_OK_STATUS = os.getenv("CADR_SNAPSHOT_REQUIRE_OK_STATUS", "1") == "1"
+CADR_DEMO_TARGET_WIN_RATE = float(os.getenv("CADR_DEMO_TARGET_WIN_RATE", "0.75"))
+CADR_DEMO_STRETCH_WIN_RATE = float(os.getenv("CADR_DEMO_STRETCH_WIN_RATE", "0.85"))
+CADR_DEMO_SHORTLIST_LIMIT = int(os.getenv("CADR_DEMO_SHORTLIST_LIMIT", "4"))
+CADR_DEMO_MIN_TRADES = int(os.getenv("CADR_DEMO_MIN_TRADES", "2"))
+CADR_DEMO_MIN_CORRELATION = float(os.getenv("CADR_DEMO_MIN_CORRELATION", "0.8"))
+CADR_DEMO_MAX_ABS_ZSCORE = float(os.getenv("CADR_DEMO_MAX_ABS_ZSCORE", "6.5"))
+CADR_DEMO_MIN_ABS_ZSCORE = float(os.getenv("CADR_DEMO_MIN_ABS_ZSCORE", "2.0"))
+CADR_CONFIRMED_TARGET_WIN_RATE = float(os.getenv("CADR_CONFIRMED_TARGET_WIN_RATE", "0.75"))
+CADR_CONFIRMED_STRETCH_WIN_RATE = float(os.getenv("CADR_CONFIRMED_STRETCH_WIN_RATE", "0.85"))
+CADR_CONFIRMED_MIN_EVIDENCE_SAMPLES = int(os.getenv("CADR_CONFIRMED_MIN_EVIDENCE_SAMPLES", "6"))
+CADR_CONFIRMED_SHORTLIST_LIMIT = int(os.getenv("CADR_CONFIRMED_SHORTLIST_LIMIT", "3"))
 
 # Divergence detection thresholds
 Z_SCORE_ENTRY_THRESHOLD = 2.0

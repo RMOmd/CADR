@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from cadr.analysis.divergence import detect_divergences
+from cadr.analysis.divergence import detect_divergences, compute_spread, spread_zscore
 from cadr.analysis.regime import classify_regime
 from cadr.backtest.engine import run_backtest
 from cadr.data.cmc_client import CMCClient
@@ -33,6 +33,85 @@ def _chart_points_to_frames(chart_points: List[Dict[str, Any]], symbols: List[st
     for symbol in symbols:
         frames[symbol] = pd.DataFrame({"close": df[symbol].astype(float)})
     return frames
+
+
+def _build_demo_diagnostics(
+    pair_frame_a: pd.DataFrame,
+    pair_frame_b: pd.DataFrame,
+    spec: StrategySpec,
+) -> Dict[str, Any] | None:
+    overlapping = min(len(pair_frame_a), len(pair_frame_b))
+    if overlapping < 12:
+        return None
+
+    lookback = min(14, max(6, overlapping - 2))
+    try:
+        backtest_result = run_backtest(
+            pair_frame_a,
+            pair_frame_b,
+            spec,
+            lookback=lookback,
+            min_points=12,
+        )
+    except Exception:
+        backtest_result = None
+
+    spread = compute_spread(pair_frame_a["close"], pair_frame_b["close"])
+    zscores = spread_zscore(spread, lookback=lookback).dropna()
+    thresholds = spec.analysis.get("thresholds", {})
+    entry_threshold = float(thresholds.get("entry_zscore", 2.0))
+    exit_threshold = float(thresholds.get("exit_zscore", 0.5))
+    stop_threshold = float(thresholds.get("stop_zscore", 3.5))
+    horizon = min(6, max(2, len(zscores) // 3))
+    event_hits = 0
+    event_failures = 0
+    event_samples = 0
+    idx = 0
+    z_values = list(zscores.values)
+    while idx < len(z_values):
+        entry_z = float(z_values[idx])
+        if abs(entry_z) < entry_threshold:
+            idx += 1
+            continue
+        event_samples += 1
+        resolved = False
+        for step in range(1, min(horizon + 1, len(z_values) - idx)):
+            future_z = float(z_values[idx + step])
+            reverted = abs(future_z) <= exit_threshold or (future_z * entry_z) < 0
+            stopped = abs(future_z) >= stop_threshold or abs(future_z) >= abs(entry_z) + 0.75
+            if reverted:
+                event_hits += 1
+                resolved = True
+                idx += step
+                break
+            if stopped:
+                event_failures += 1
+                resolved = True
+                idx += step
+                break
+        if not resolved:
+            event_failures += 1
+        idx += 1
+
+    payload = backtest_result.model_dump() if backtest_result is not None else {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_profit_per_trade_pct": 0.0,
+        "sharpe_ratio": 0.0,
+        "profit_factor": 0.0,
+        "calmar_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "avg_holding_period_days": 0.0,
+        "total_cost_drag_pct": 0.0,
+    }
+    payload["sample_points"] = overlapping
+    payload["lookback_used"] = lookback
+    payload["quality"] = "limited_sample" if overlapping < 30 else "full_sample"
+    payload["setup_samples"] = event_samples
+    payload["setup_hits"] = event_hits
+    payload["setup_failures"] = event_failures
+    payload["setup_hit_rate"] = round((event_hits / event_samples), 4) if event_samples else None
+    return payload
 
 
 def _build_global_metrics(client: CMCClient) -> GlobalMetrics:
@@ -176,5 +255,8 @@ def generate_cadr_strategy_from_skill_hub(
     if len(pair_frame_a) >= 30 and len(pair_frame_b) >= 30:
         backtest_result = run_backtest(pair_frame_a, pair_frame_b, spec)
         spec.backtest_results = backtest_result.model_dump()
+    demo_diagnostics = _build_demo_diagnostics(pair_frame_a, pair_frame_b, spec)
+    if demo_diagnostics is not None:
+        spec.analysis["demo_diagnostics"] = demo_diagnostics
 
     return spec

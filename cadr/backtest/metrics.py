@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import math
 
 def calculate_metrics(equity_curve: pd.Series, trades: list) -> dict:
     """Calculate standard performance metrics from equity curve and trades log."""
@@ -23,7 +24,7 @@ def calculate_metrics(equity_curve: pd.Series, trades: list) -> dict:
     avg_win = np.mean([t['pnl_pct'] for t in winning_trades]) if winning_trades else 0.0
     avg_loss = np.mean([t['pnl_pct'] for t in losing_trades]) if losing_trades else 0.0
     
-    profit_factor = abs(sum([t['pnl_pct'] for t in winning_trades]) / sum([t['pnl_pct'] for t in losing_trades])) if sum([t['pnl_pct'] for t in losing_trades]) != 0 else float('inf')
+    profit_factor = abs(sum([t['pnl_pct'] for t in winning_trades]) / sum([t['pnl_pct'] for t in losing_trades])) if sum([t['pnl_pct'] for t in losing_trades]) != 0 else None
     
     avg_profit_per_trade = np.mean([t['pnl_pct'] for t in trades])
     
@@ -41,12 +42,14 @@ def calculate_metrics(equity_curve: pd.Series, trades: list) -> dict:
     
     calmar_ratio = (equity_curve.iloc[-1] / equity_curve.iloc[0] - 1) / max_drawdown if max_drawdown != 0 else 0.0
     
+    safe_profit_factor = 99.0 if profit_factor is None or not math.isfinite(profit_factor) else round(profit_factor, 2)
+
     return {
         "total_trades": len(trades),
         "win_rate": round(win_rate, 4),
         "avg_profit_per_trade_pct": round(avg_profit_per_trade * 100, 2),
         "sharpe_ratio": round(sharpe_ratio, 2),
         "max_drawdown_pct": round(max_drawdown * 100, 2),
-        "profit_factor": round(profit_factor, 2),
+        "profit_factor": safe_profit_factor,
         "calmar_ratio": round(calmar_ratio, 2)
     }

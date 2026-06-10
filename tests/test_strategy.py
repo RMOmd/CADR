@@ -101,3 +101,28 @@ def test_backtest_cost_model_reduces_realized_return():
 
     assert low_cost.avg_profit_per_trade_pct > high_cost.avg_profit_per_trade_pct
     assert high_cost.total_cost_drag_pct > low_cost.total_cost_drag_pct
+
+
+def test_backtest_supports_shorter_demo_windows():
+    idx = pd.date_range("2024-01-01", periods=18, freq="D")
+    df_b = pd.DataFrame({"close": [100.0, 100.0, 100.5, 100.5, 101.0, 101.0, 101.5, 101.5, 101.0, 101.0, 100.5, 100.5, 100.0, 100.0, 99.5, 99.5, 99.0, 99.0]}, index=idx)
+    df_a = pd.DataFrame({"close": [100.0, 101.0, 102.0, 104.0, 106.0, 108.0, 110.0, 107.0, 104.0, 101.0, 98.0, 96.0, 94.0, 95.0, 96.0, 98.0, 99.0, 100.0]}, index=idx)
+
+    signal = DivergenceSignal(
+        asset_a="AAA",
+        asset_b="BBB",
+        z_score=2.8,
+        direction="long_BBB_short_AAA",
+        conviction_score=4,
+        metadata={"correlation_breakdown": True},
+    )
+    spec = generate_strategy(
+        [signal],
+        MarketRegime.NEUTRAL,
+        {"btc_dominance": 55.0, "fear_greed_index": 50, "regime": "neutral"},
+    )
+
+    result = run_backtest(df_a, df_b, spec, lookback=10, min_points=12)
+
+    assert result.period == "2024-01-01 to 2024-01-18"
+    assert result.total_trades >= 0

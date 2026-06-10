@@ -40,6 +40,7 @@ class SnapshotEvaluateRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.dashboard_service.start_background_worker()
     monitor = DashboardMonitor(app.state.dashboard_service)
     app.state.dashboard_monitor = monitor
     monitor.start()
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         monitor.stop()
+        app.state.dashboard_service.stop_background_worker()
 
 
 def create_app() -> FastAPI:
@@ -62,6 +64,12 @@ def create_app() -> FastAPI:
     app.state.dashboard_storage = storage
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    def dispatch_job(job_type: str, params: dict | None, fallback):
+        submitter = getattr(app.state.dashboard_service, "submit_job", None)
+        if callable(submitter):
+            return {"job": submitter(job_type, params or {})}
+        return fallback()
 
     @app.get("/")
     def index():
@@ -86,20 +94,42 @@ def create_app() -> FastAPI:
     def get_runs(request: Request):
         return {"runs": request.app.state.dashboard_storage.list_recent_runs(limit=25)}
 
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: int, request: Request):
+        getter = getattr(request.app.state.dashboard_service, "get_job", None)
+        if not callable(getter):
+            raise HTTPException(status_code=404, detail="Job service is not available.")
+        job = getter(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' was not found.")
+        return job
+
     @app.post("/api/runs/daily-overview")
     def run_daily(request: Request):
-        return request.app.state.dashboard_service.run_daily_overview()
+        return dispatch_job("daily_overview", None, request.app.state.dashboard_service.run_daily_overview)
 
     @app.post("/api/runs/default-scan")
     def run_scan(payload: ScanRunRequest, request: Request):
-        return request.app.state.dashboard_service.run_default_scan(lookback_days=payload.lookback_days)
+        return dispatch_job(
+            "default_scan",
+            {"lookback_days": payload.lookback_days},
+            lambda: request.app.state.dashboard_service.run_default_scan(lookback_days=payload.lookback_days),
+        )
 
     @app.post("/api/runs/pair")
     def run_pair(payload: PairRunRequest, request: Request):
-        return request.app.state.dashboard_service.run_pair(
-            base_asset=payload.base_asset,
-            quote_asset=payload.quote_asset,
-            lookback_days=payload.lookback_days,
+        return dispatch_job(
+            "pair_scan",
+            {
+                "base_asset": payload.base_asset,
+                "quote_asset": payload.quote_asset,
+                "lookback_days": payload.lookback_days,
+            },
+            lambda: request.app.state.dashboard_service.run_pair(
+                base_asset=payload.base_asset,
+                quote_asset=payload.quote_asset,
+                lookback_days=payload.lookback_days,
+            ),
         )
 
     @app.get("/api/watchlist")
@@ -120,7 +150,11 @@ def create_app() -> FastAPI:
 
     @app.post("/api/monitor/run")
     def run_monitor(request: Request):
-        return request.app.state.dashboard_service.run_monitor_cycle(force=True)
+        return dispatch_job(
+            "monitor_scan",
+            {"force": True},
+            lambda: request.app.state.dashboard_service.run_monitor_cycle(force=True),
+        )
 
     @app.get("/api/forecasts")
     def get_forecasts(request: Request, limit: int = 20):
@@ -128,16 +162,26 @@ def create_app() -> FastAPI:
 
     @app.post("/api/forecasts/evaluate")
     def evaluate_forecasts(payload: ForecastEvaluateRequest, request: Request):
-        if payload.force:
-            return request.app.state.dashboard_service.evaluate_due_forecasts()
-        return request.app.state.dashboard_service.evaluate_due_forecasts()
+        return dispatch_job(
+            "evaluate_forecasts",
+            {"force": payload.force},
+            request.app.state.dashboard_service.evaluate_due_forecasts,
+        )
 
     @app.post("/api/snapshots/export")
     def export_snapshot(request: Request):
-        return request.app.state.dashboard_service.export_dashboard_snapshot()
+        return dispatch_job(
+            "snapshot_export",
+            None,
+            request.app.state.dashboard_service.export_dashboard_snapshot,
+        )
 
     @app.post("/api/snapshots/evaluate")
     def evaluate_snapshot(payload: SnapshotEvaluateRequest, request: Request):
-        return request.app.state.dashboard_service.evaluate_dashboard_snapshot(payload.snapshot_path)
+        return dispatch_job(
+            "snapshot_evaluate",
+            {"snapshot_path": payload.snapshot_path},
+            lambda: request.app.state.dashboard_service.evaluate_dashboard_snapshot(payload.snapshot_path),
+        )
 
     return app

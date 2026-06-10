@@ -28,7 +28,14 @@ def _extract_cost_model(spec: StrategySpec) -> dict:
     }
 
 
-def run_backtest(df_a: pd.DataFrame, df_b: pd.DataFrame, spec: StrategySpec) -> BacktestResult:
+def run_backtest(
+    df_a: pd.DataFrame,
+    df_b: pd.DataFrame,
+    spec: StrategySpec,
+    *,
+    lookback: int | None = None,
+    min_points: int = 30,
+) -> BacktestResult:
     """Run an iterative mean-reversion backtest with simple trading-cost assumptions."""
 
     if df_a.empty or df_b.empty:
@@ -39,11 +46,14 @@ def run_backtest(df_a: pd.DataFrame, df_b: pd.DataFrame, spec: StrategySpec) -> 
         "price_b": df_b["close"],
     }).dropna()
 
-    if len(df) < 30:
+    min_points = max(10, int(min_points))
+    if len(df) < min_points:
         raise ValueError("Not enough overlapping data for backtesting.")
 
     df["spread"] = compute_spread(df["price_a"], df["price_b"])
-    df["zscore"] = spread_zscore(df["spread"], lookback=30)
+    resolved_lookback = lookback if lookback is not None else 30
+    resolved_lookback = max(5, min(int(resolved_lookback), max(5, len(df) - 1)))
+    df["zscore"] = spread_zscore(df["spread"], lookback=resolved_lookback)
 
     direction = spec.strategy["direction"]
     asset_a = spec.strategy["pair"]["asset_a"]

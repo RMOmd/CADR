@@ -66,6 +66,18 @@ const TRANSLATIONS = {
     snapshotGeneratedAt: "Snapshot generated",
     snapshotPath: "Snapshot file",
     snapshotPairs: "Pairs in snapshot",
+    executionReady: "Execution-ready",
+    excludedSignals: "Excluded",
+    rawSnapshotSummary: "Raw cohort",
+    noExecutionGradeCandidates: "No execution-grade candidates in this snapshot.",
+    demoShortlist: "Demo shortlist",
+    targetHitRate: ">= target hit rate",
+    stretchHitRate: ">= stretch hit rate",
+    expectedWinRate: "Expected win rate",
+    noDemoShortlist: "No demo shortlist candidates yet.",
+    confirmedShortlist: "Confirmed cohort",
+    confirmedSamples: "Confirmed samples",
+    noConfirmedShortlist: "No confirmed candidates yet.",
     evaluationAt: "Evaluation time",
     evaluationFile: "Evaluation file",
     skipped: "skipped",
@@ -242,6 +254,18 @@ const TRANSLATIONS = {
     snapshotGeneratedAt: "Snapshot создан",
     snapshotPath: "Файл snapshot",
     snapshotPairs: "Пар в snapshot",
+    executionReady: "Готовы к исполнению",
+    excludedSignals: "Исключено",
+    rawSnapshotSummary: "Сырой набор",
+    noExecutionGradeCandidates: "В этом snapshot нет кандидатов execution-grade.",
+    demoShortlist: "Demo shortlist",
+    targetHitRate: ">= целевой hit-rate",
+    stretchHitRate: ">= усиленный hit-rate",
+    expectedWinRate: "Ожидаемый win-rate",
+    noDemoShortlist: "Кандидатов для demo shortlist пока нет.",
+    confirmedShortlist: "Подтвержденный cohort",
+    confirmedSamples: "Подтвержденные наблюдения",
+    noConfirmedShortlist: "Подтвержденных кандидатов пока нет.",
     evaluationAt: "Время проверки",
     evaluationFile: "Файл проверки",
     skipped: "пропущено",
@@ -1423,6 +1447,7 @@ const state = {
   selectedPair: null,
   locale: "en",
   localeChoice: "auto",
+  activeJobId: null,
   busy: {
     active: false,
     label: "",
@@ -1655,6 +1680,15 @@ function interpolateDirectionText(value) {
   return formatDirection(signal);
 }
 
+function fileLabel(value) {
+  if (!value) {
+    return "—";
+  }
+  const raw = String(value).replaceAll("\\", "/");
+  const parts = raw.split("/");
+  return parts[parts.length - 1] || raw;
+}
+
 function metricLabel(labelKey, helpKey) {
   return `
     <span class="metric-label">
@@ -1676,9 +1710,34 @@ function metricChip(labelKey, value, helpKey = null) {
   `;
 }
 
+function renderHeroMetrics(stats) {
+  const container = document.getElementById("hero-metrics");
+  if (!container) {
+    return;
+  }
+
+  const cards = [
+    ["monitoredPairs", stats?.monitored_pairs ?? 0, "monitoredPairsNote"],
+    ["healthySignals", stats?.ok_pairs ?? 0, "healthySignalsNote"],
+    ["forecastPending", stats?.pending_forecasts ?? 0, "forecastSummaryTitle"],
+  ];
+
+  container.innerHTML = cards
+    .map(
+      ([labelKey, value, noteKey]) => `
+        <article class="hero-metric">
+          <span class="hero-metric-label">${escapeHtml(t(labelKey))}</span>
+          <strong class="hero-metric-value">${escapeHtml(value)}</strong>
+          <span class="hero-metric-note">${escapeHtml(t(noteKey))}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function setActionLog(message, status = "partial") {
   const el = document.getElementById("action-log");
-  el.className = `callout ${toneClass(status)}`;
+  el.className = `callout ops-log ${toneClass(status)}`;
   el.textContent = message;
 }
 
@@ -1697,7 +1756,7 @@ function refreshBusyTimer() {
   timer.textContent = `${elapsedSec}s`;
 }
 
-function setBusyState(active, label = "") {
+function setBusyState(active, label = "", subtitleText = "") {
   const indicator = document.getElementById("busy-indicator");
   const title = document.getElementById("busy-title");
   const subtitle = document.getElementById("busy-subtitle");
@@ -1706,22 +1765,30 @@ function setBusyState(active, label = "") {
     return;
   }
 
-  if (state.busy.timerId) {
+  const preserveTimer = active && state.busy.active && state.busy.startedAt;
+
+  if (state.busy.timerId && !preserveTimer) {
     clearInterval(state.busy.timerId);
     state.busy.timerId = null;
   }
 
   state.busy.active = active;
   state.busy.label = label;
-  state.busy.startedAt = active ? Date.now() : null;
+  state.busy.startedAt = active ? (preserveTimer ? state.busy.startedAt : Date.now()) : null;
 
   if (active) {
     title.textContent = label || t("busyTitle");
-    subtitle.textContent = t("busySubtitle");
-    timer.textContent = "0s";
+    subtitle.textContent = subtitleText || t("busySubtitle");
+    if (!preserveTimer) {
+      timer.textContent = "0s";
+    } else {
+      refreshBusyTimer();
+    }
     indicator.classList.add("active");
     indicator.setAttribute("aria-hidden", "false");
-    state.busy.timerId = setInterval(refreshBusyTimer, 1000);
+    if (!state.busy.timerId) {
+      state.busy.timerId = setInterval(refreshBusyTimer, 1000);
+    }
   } else {
     indicator.classList.remove("active");
     indicator.setAttribute("aria-hidden", "true");
@@ -1731,6 +1798,79 @@ function setBusyState(active, label = "") {
   }
 
   setControlsDisabled(active);
+}
+
+function getBusyLabelForRun(run) {
+  const runType = run?.run_type;
+  if (runType === "daily_overview") {
+    return t("dailyOverviewAction");
+  }
+  if (runType === "default_scan") {
+    return t("defaultScanAction");
+  }
+  if (runType === "monitor_scan") {
+    return t("runMonitorAction");
+  }
+  return "";
+}
+
+function getBusyLabelForJob(job) {
+  if (!job) {
+    return "";
+  }
+  const params = job.params || {};
+  if (job.job_type === "pair_scan") {
+    const pair = `${params.base_asset || ""}/${params.quote_asset || ""}`.replace(/^\/|\/$/g, "");
+    return t("pairScanAction", { pair });
+  }
+  if (job.job_type === "daily_overview") {
+    return t("dailyOverviewAction");
+  }
+  if (job.job_type === "default_scan") {
+    return t("defaultScanAction");
+  }
+  if (job.job_type === "monitor_scan") {
+    return t("runMonitorAction");
+  }
+  if (job.job_type === "evaluate_forecasts") {
+    return t("evaluateForecastsAction");
+  }
+  if (job.job_type === "snapshot_export") {
+    return t("saveSnapshotAction");
+  }
+  if (job.job_type === "snapshot_evaluate") {
+    return t("evaluateSnapshotAction");
+  }
+  return "";
+}
+
+function syncBusyStateFromDashboard(data) {
+  const activeJobs = Array.isArray(data?.active_jobs) ? data.active_jobs : [];
+  const activeJob = activeJobs.find((job) => job.status === "running") || activeJobs[0];
+  if (activeJob) {
+    state.activeJobId = activeJob.id ?? null;
+    setBusyState(true, getBusyLabelForJob(activeJob), activeJob.message || t("busySubtitle"));
+    return;
+  }
+
+  const runs = [
+    data?.latest_overview,
+    data?.latest_scan,
+    data?.latest_monitor,
+    ...(Array.isArray(data?.recent_runs) ? data.recent_runs : []),
+  ].filter(Boolean);
+  const activeRun = runs.find((run) => run.status === "running");
+
+  if (activeRun) {
+    state.activeJobId = null;
+    setBusyState(true, getBusyLabelForRun(activeRun));
+    return;
+  }
+
+  if (state.busy.active) {
+    state.activeJobId = null;
+    setBusyState(false);
+  }
 }
 
 function applyStaticTranslations() {
@@ -1894,6 +2034,8 @@ function renderStats(stats) {
       `
     )
     .join("");
+
+  renderHeroMetrics(stats);
 }
 
 function renderWatchlistPanel(watchlist, monitor, forecasts) {
@@ -1903,32 +2045,75 @@ function renderWatchlistPanel(watchlist, monitor, forecasts) {
   const lookback = document.getElementById("monitor-lookback");
   const status = document.getElementById("watchlist-status");
   const summary = document.getElementById("forecast-summary");
+  const pairCountBadge = document.getElementById("watchlist-pair-count");
+  const forecastSummaryBadge = document.getElementById("forecast-summary-badge");
 
   editor.value = (watchlist ?? []).map((entry) => entry.pair).join("\n");
   enabled.checked = Boolean(monitor?.enabled);
   interval.value = Math.max(3, Math.round((monitor?.interval_sec ?? 300) / 60));
   lookback.value = monitor?.lookback_days ?? 90;
+  pairCountBadge.textContent = String((watchlist ?? []).length);
 
-  status.textContent =
-    `${t("backgroundMonitor")}: ${monitor?.enabled ? t("monitorEnabledYes") : t("monitorEnabledNo")} · ` +
-    `${t("monitorNextRun")}: ${formatDateTime(monitor?.next_run_at, "unknown")} · ` +
-    `${t("monitorLastRun")}: ${formatDateTime(monitor?.last_finished_at, "unknown")}`;
+  const monitorEnabled = Boolean(monitor?.enabled);
+  const monitorStatusLabel = monitorEnabled ? t("monitorEnabledYes") : t("monitorEnabledNo");
+  status.innerHTML = `
+    <div class="watchlist-status-head">
+      <div class="watchlist-status-title">
+        <strong>${escapeHtml(t("backgroundMonitor"))}</strong>
+        <span>${escapeHtml(t("watchlistCaption"))}</span>
+      </div>
+      <span class="status-pill ${monitorEnabled ? "tone-ok" : "tone-partial"}">${escapeHtml(monitorStatusLabel)}</span>
+    </div>
+    <div class="watchlist-status-grid">
+      <div class="status-meta-card">
+        <span>${escapeHtml(t("monitorNextRun"))}</span>
+        <strong>${escapeHtml(formatDateTime(monitor?.next_run_at, "unknown"))}</strong>
+      </div>
+      <div class="status-meta-card">
+        <span>${escapeHtml(t("monitorLastRun"))}</span>
+        <strong>${escapeHtml(formatDateTime(monitor?.last_finished_at, "unknown"))}</strong>
+      </div>
+    </div>
+  `;
   status.dataset.userSet = "true";
 
   const forecastSummary = forecasts?.summary ?? {};
+  forecastSummaryBadge.textContent = String((forecastSummary.pending ?? 0) + (forecastSummary.evaluated ?? 0));
   summary.innerHTML = `
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastPending"))}</span><strong>${escapeHtml(forecastSummary.pending ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastEvaluated"))}</span><strong>${escapeHtml(forecastSummary.evaluated ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastWins"))}</span><strong class="tone-ok">${escapeHtml(forecastSummary.wins ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastLosses"))}</span><strong class="tone-error">${escapeHtml(forecastSummary.losses ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastFlat"))}</span><strong>${escapeHtml(forecastSummary.flat ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("exportPath"))}</span><span>${escapeHtml(forecasts?.export_path ?? "—")}</span></div>
+    <div class="compact-stat-grid">
+      <div class="compact-stat">
+        <span class="compact-stat-label">${escapeHtml(t("forecastPending"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(forecastSummary.pending ?? 0)}</strong>
+      </div>
+      <div class="compact-stat">
+        <span class="compact-stat-label">${escapeHtml(t("forecastEvaluated"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(forecastSummary.evaluated ?? 0)}</strong>
+      </div>
+      <div class="compact-stat tone-ok">
+        <span class="compact-stat-label">${escapeHtml(t("forecastWins"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(forecastSummary.wins ?? 0)}</strong>
+      </div>
+      <div class="compact-stat tone-error">
+        <span class="compact-stat-label">${escapeHtml(t("forecastLosses"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(forecastSummary.losses ?? 0)}</strong>
+      </div>
+      <div class="compact-stat">
+        <span class="compact-stat-label">${escapeHtml(t("forecastFlat"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(forecastSummary.flat ?? 0)}</strong>
+      </div>
+    </div>
+    <div class="meta-note">
+      <span class="summary-label">${escapeHtml(t("exportPath"))}</span>
+      <strong>${escapeHtml(fileLabel(forecasts?.export_path ?? "—"))}</strong>
+    </div>
   `;
 }
 
 function renderForecasts(forecasts) {
   const container = document.getElementById("recent-forecasts");
+  const badge = document.getElementById("recent-forecasts-badge");
   const items = forecasts?.recent ?? [];
+  badge.textContent = String(items.length);
   if (items.length === 0) {
     container.innerHTML = `<div class="muted">${escapeHtml(t("noForecasts"))}</div>`;
     return;
@@ -1943,16 +2128,28 @@ function renderForecasts(forecasts) {
             ${escapeHtml(localizeOutcome(item.outcome ?? item.status))}
           </span>
         </div>
-        <div class="forecast-card-meta">
-          <span>${escapeHtml(interpolateDirectionText(item.direction))}</span>
-          <span>${escapeHtml(t("entryCheckpoint"))}: ${escapeHtml(formatDateTime(item.created_at, "unknown"))}</span>
-          <span>${escapeHtml(t("dueAt"))}: ${escapeHtml(formatDateTime(item.due_at, "unknown"))}</span>
+        <div class="forecast-direction">${escapeHtml(interpolateDirectionText(item.direction))}</div>
+        <div class="forecast-metric-grid">
+          <div class="forecast-metric">
+            <span>${escapeHtml(t("zScore"))}</span>
+            <strong>${escapeHtml(formatSigned(item.spread_zscore))}</strong>
+          </div>
+          <div class="forecast-metric">
+            <span>${escapeHtml(t("conviction"))}</span>
+            <strong>${escapeHtml(item.conviction_score ?? "—")}</strong>
+          </div>
+          <div class="forecast-metric">
+            <span>${escapeHtml(t("correlation"))}</span>
+            <strong>${escapeHtml(formatNumber(item.correlation, 3))}</strong>
+          </div>
+          <div class="forecast-metric">
+            <span>${escapeHtml(t("outcome"))}</span>
+            <strong>${escapeHtml(item.pnl_pct === null || item.pnl_pct === undefined ? "—" : `${formatSigned(item.pnl_pct)}%`)}</strong>
+          </div>
         </div>
-        <div class="forecast-card-meta">
-          <span>${escapeHtml(t("zScore"))}: ${escapeHtml(formatSigned(item.spread_zscore))}</span>
-          <span>${escapeHtml(t("conviction"))}: ${escapeHtml(item.conviction_score ?? "—")}</span>
-          <span>${escapeHtml(t("correlation"))}: ${escapeHtml(formatNumber(item.correlation, 3))}</span>
-          <span>${escapeHtml(t("outcome"))}: ${escapeHtml(item.pnl_pct === null || item.pnl_pct === undefined ? "—" : `${formatSigned(item.pnl_pct)}%`)}</span>
+        <div class="forecast-card-meta forecast-card-times">
+          <span><strong>${escapeHtml(t("entryCheckpoint"))}</strong> ${escapeHtml(formatDateTime(item.created_at, "unknown"))}</span>
+          <span><strong>${escapeHtml(t("dueAt"))}</strong> ${escapeHtml(formatDateTime(item.due_at, "unknown"))}</span>
         </div>
       </article>
     `)
@@ -1968,10 +2165,69 @@ function renderSnapshotTools(snapshotState) {
   if (!latestSnapshot) {
     summary.innerHTML = `<div class="muted">${escapeHtml(t("noSnapshotYet"))}</div>`;
   } else {
+    const demoShortlist = Array.isArray(latestSnapshot.demo_shortlist) ? latestSnapshot.demo_shortlist : [];
+    const confirmedShortlist = Array.isArray(latestSnapshot.confirmed_shortlist) ? latestSnapshot.confirmed_shortlist : [];
+    const demoPreview = demoShortlist
+      .slice(0, 3)
+      .map((item) => {
+        const rate = item.expected_win_rate === null || item.expected_win_rate === undefined
+          ? "—"
+          : `${Math.round(Number(item.expected_win_rate) * 100)}%`;
+        return `<div class="meta-note"><span class="summary-label">${escapeHtml(item.pair)}</span><strong>${escapeHtml(rate)}</strong></div>`;
+      })
+      .join("");
+    const confirmedPreview = confirmedShortlist
+      .slice(0, 3)
+      .map((item) => {
+        const rate = item.expected_win_rate === null || item.expected_win_rate === undefined
+          ? "—"
+          : `${Math.round(Number(item.expected_win_rate) * 100)}%`;
+        return `<div class="meta-note"><span class="summary-label">${escapeHtml(item.pair)}</span><strong>${escapeHtml(`${rate} · n=${item.evidence_samples ?? 0}`)}</strong></div>`;
+      })
+      .join("");
     summary.innerHTML = `
-      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotGeneratedAt"))}</span><strong>${escapeHtml(formatDateTime(latestSnapshot.generated_at, "unknown"))}</strong></div>
-      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotPairs"))}</span><span>${escapeHtml(latestSnapshot.latest_pair_count ?? 0)}</span></div>
-      <div class="summary-line"><span class="summary-label">${escapeHtml(t("snapshotPath"))}</span><span>${escapeHtml(snapshotState?.latest_snapshot_path ?? "—")}</span></div>
+      <div class="compact-stat-grid">
+        <div class="compact-stat">
+          <span class="compact-stat-label">${escapeHtml(t("snapshotPairs"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.latest_pair_count ?? 0)}</strong>
+        </div>
+        <div class="compact-stat tone-ok">
+          <span class="compact-stat-label">${escapeHtml(t("executionReady"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.execution_ready_pair_count ?? 0)}</strong>
+        </div>
+        <div class="compact-stat">
+          <span class="compact-stat-label">${escapeHtml(t("excludedSignals"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.research_only_pair_count ?? 0)}</strong>
+        </div>
+        <div class="compact-stat tone-ok">
+          <span class="compact-stat-label">${escapeHtml(t("demoShortlist"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.demo_shortlist_count ?? 0)}</strong>
+        </div>
+        <div class="compact-stat tone-ok">
+          <span class="compact-stat-label">${escapeHtml(t("targetHitRate"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.demo_target_hits ?? 0)}</strong>
+        </div>
+        <div class="compact-stat tone-ok">
+          <span class="compact-stat-label">${escapeHtml(t("confirmedShortlist"))}</span>
+          <strong class="compact-stat-value">${escapeHtml(latestSnapshot.confirmed_shortlist_count ?? 0)}</strong>
+        </div>
+      </div>
+      <div class="meta-note">
+        <span class="summary-label">${escapeHtml(t("snapshotGeneratedAt"))}</span>
+        <strong>${escapeHtml(formatDateTime(latestSnapshot.generated_at, "unknown"))}</strong>
+      </div>
+      <div class="meta-note">
+        <span class="summary-label">${escapeHtml(t("snapshotPath"))}</span>
+        <strong>${escapeHtml(fileLabel(snapshotState?.latest_snapshot_path ?? "—"))}</strong>
+      </div>
+      ${
+        confirmedPreview ||
+        `<div class="meta-note"><strong>${escapeHtml(t("noConfirmedShortlist"))}</strong></div>`
+      }
+      ${
+        demoPreview ||
+        `<div class="meta-note"><strong>${escapeHtml(t("noDemoShortlist"))}</strong></div>`
+      }
     `;
   }
 
@@ -1980,14 +2236,58 @@ function renderSnapshotTools(snapshotState) {
     return;
   }
 
-  const stats = latestEvaluation.summary ?? {};
+  const stats = latestEvaluation.execution_ready_summary ?? latestEvaluation.summary ?? {};
+  const rawStats = latestEvaluation.summary ?? {};
+  const excludedReasons = latestEvaluation.excluded_reason_counts ?? {};
+  const excludedSummary = Object.entries(excludedReasons)
+    .slice(0, 3)
+    .map(([reason, count]) => `${reason}: ${count}`)
+    .join(" | ");
   evaluation.innerHTML = `
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("evaluationAt"))}</span><strong>${escapeHtml(formatDateTime(latestEvaluation.evaluated_at, "unknown"))}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastWins"))}</span><strong class="tone-ok">${escapeHtml(stats.wins ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastLosses"))}</span><strong class="tone-error">${escapeHtml(stats.losses ?? 0)}</strong></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("forecastFlat"))}</span><span>${escapeHtml(stats.flat ?? 0)}</span></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("skipped"))}</span><span>${escapeHtml(stats.skipped ?? 0)}</span></div>
-    <div class="summary-line"><span class="summary-label">${escapeHtml(t("evaluationFile"))}</span><span>${escapeHtml(latestEvaluation.output_path ?? "—")}</span></div>
+    <div class="compact-stat-grid">
+      <div class="compact-stat tone-ok">
+        <span class="compact-stat-label">${escapeHtml(t("forecastWins"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(stats.wins ?? 0)}</strong>
+      </div>
+      <div class="compact-stat tone-error">
+        <span class="compact-stat-label">${escapeHtml(t("forecastLosses"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(stats.losses ?? 0)}</strong>
+      </div>
+      <div class="compact-stat">
+        <span class="compact-stat-label">${escapeHtml(t("forecastFlat"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(stats.flat ?? 0)}</strong>
+      </div>
+      <div class="compact-stat">
+        <span class="compact-stat-label">${escapeHtml(t("skipped"))}</span>
+        <strong class="compact-stat-value">${escapeHtml(stats.skipped ?? 0)}</strong>
+      </div>
+    </div>
+    <div class="meta-note">
+      <span class="summary-label">${escapeHtml(t("executionReady"))}</span>
+      <strong>${escapeHtml(stats.total ?? 0)}</strong>
+    </div>
+    <div class="meta-note">
+      <span class="summary-label">${escapeHtml(t("rawSnapshotSummary"))}</span>
+      <strong>${escapeHtml(`${rawStats.wins ?? 0} / ${rawStats.losses ?? 0} / ${rawStats.flat ?? 0}`)}</strong>
+    </div>
+    ${
+      (stats.total ?? 0) === 0
+        ? `<div class="meta-note"><strong>${escapeHtml(t("noExecutionGradeCandidates"))}</strong></div>`
+        : ""
+    }
+    ${
+      excludedSummary
+        ? `<div class="meta-note"><span class="summary-label">${escapeHtml(t("excludedSignals"))}</span><strong>${escapeHtml(excludedSummary)}</strong></div>`
+        : ""
+    }
+    <div class="meta-note">
+      <span class="summary-label">${escapeHtml(t("evaluationAt"))}</span>
+      <strong>${escapeHtml(formatDateTime(latestEvaluation.evaluated_at, "unknown"))}</strong>
+    </div>
+    <div class="meta-note">
+      <span class="summary-label">${escapeHtml(t("evaluationFile"))}</span>
+      <strong>${escapeHtml(fileLabel(latestEvaluation.output_path ?? "—"))}</strong>
+    </div>
   `;
 }
 
@@ -2009,21 +2309,19 @@ function renderRunSummary(containerId, run, emptyTextKey) {
       : payload.summary || payload.market_view || payload.pair || null;
 
   container.innerHTML = `
-    <div class="summary-line">
-      <span class="summary-label">${escapeHtml(t("statusLabel"))}</span>
-      <strong class="${toneClass(run.status)}">${escapeHtml(localizeStatus(run.status))}</strong>
+    <div class="summary-hero">
+      <span class="status-pill ${toneClass(run.status)}">${escapeHtml(localizeStatus(run.status))}</span>
+      <span class="summary-time">${escapeHtml(formatDateTime(run.started_at, "unknown"))} → ${escapeHtml(formatDateTime(run.finished_at, "running"))}</span>
     </div>
-    <div class="summary-line">
-      <span class="summary-label">${escapeHtml(t("windowLabel"))}</span>
-      <span>${escapeHtml(formatDateTime(run.started_at, "unknown"))} → ${escapeHtml(formatDateTime(run.finished_at, "running"))}</span>
-    </div>
-    <div class="summary-line">
-      <span class="summary-label">${escapeHtml(t("messageLabel"))}</span>
-      <span>${escapeHtml(run.message ?? run.error ?? t("noMessage"))}</span>
-    </div>
-    <div class="summary-line">
-      <span class="summary-label">${escapeHtml(t("signalLabel"))}</span>
-      <span>${escapeHtml(extraLine ?? t("noAdditionalSummary"))}</span>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-card-label">${escapeHtml(t("messageLabel"))}</span>
+        <strong>${escapeHtml(run.message ?? run.error ?? t("noMessage"))}</strong>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">${escapeHtml(t("signalLabel"))}</span>
+        <strong>${escapeHtml(extraLine ?? t("noAdditionalSummary"))}</strong>
+      </div>
     </div>
   `;
 }
@@ -2051,8 +2349,24 @@ function renderSignalBoard(pairs) {
             <span class="status-pill ${toneClass(pair.status)}">${escapeHtml(localizeStatus(pair.status))}</span>
           </div>
 
-          <div class="signal-card-meta">
-            ${escapeHtml(localizeEnum(pair.divergence_state))} · ${escapeHtml(localizeEnum(pair.market_regime))}
+          <div class="signal-card-context">
+            <span class="signal-context-pill">${escapeHtml(localizeEnum(pair.divergence_state))}</span>
+            <span class="signal-context-pill">${escapeHtml(localizeEnum(pair.market_regime))}</span>
+          </div>
+
+          <div class="signal-card-summary">
+            <div class="signal-mini-metric">
+              <span>${escapeHtml(t("zScore"))}</span>
+              <strong>${escapeHtml(formatSigned(pair.spread_zscore))}</strong>
+            </div>
+            <div class="signal-mini-metric">
+              <span>${escapeHtml(t("conviction"))}</span>
+              <strong>${escapeHtml(pair.conviction_score ?? "—")}</strong>
+            </div>
+            <div class="signal-mini-metric">
+              <span>${escapeHtml(t("correlation"))}</span>
+              <strong>${escapeHtml(formatNumber(pair.correlation, 3))}</strong>
+            </div>
           </div>
 
           <div class="signal-tags">
@@ -2138,10 +2452,14 @@ function renderRuns(runs) {
     .map(
       (run) => `
         <article class="run-card">
-          <strong>${escapeHtml(localizeRunType(run.run_type))}${run.pair ? ` · ${escapeHtml(run.pair)}` : ""}</strong>
-          <div class="run-meta ${toneClass(run.status)}">${escapeHtml(localizeStatus(run.status))}</div>
-          <div class="run-meta">${escapeHtml(formatDateTime(run.started_at, "unknown"))} → ${escapeHtml(formatDateTime(run.finished_at, "running"))}</div>
-          <div>${escapeHtml(run.message ?? run.error ?? t("noMessage"))}</div>
+          <div class="run-card-head">
+            <div class="run-card-title">
+              <strong>${escapeHtml(localizeRunType(run.run_type))}${run.pair ? ` · ${escapeHtml(run.pair)}` : ""}</strong>
+              <div class="run-time">${escapeHtml(formatDateTime(run.started_at, "unknown"))} → ${escapeHtml(formatDateTime(run.finished_at, "running"))}</div>
+            </div>
+            <span class="status-pill ${toneClass(run.status)}">${escapeHtml(localizeStatus(run.status))}</span>
+          </div>
+          <div class="run-message">${escapeHtml(run.message ?? run.error ?? t("noMessage"))}</div>
         </article>
       `
     )
@@ -2160,7 +2478,7 @@ function renderPairDetail(detail) {
   const zscoreSeries = history.map((entry) => entry.spread_zscore);
   const correlationSeries = history.map((entry) => entry.correlation);
   const historyRows = history
-    .slice(-6)
+    .slice(-8)
     .reverse()
     .map(
       (entry) => `
@@ -2178,33 +2496,63 @@ function renderPairDetail(detail) {
   container.innerHTML = `
     <div class="detail-layout">
       <section class="detail-section">
-        <div class="detail-summary">
-          <div>
-            <h3>${escapeHtml(latest.pair ?? t("unknownPair"))}</h3>
-            <p>${escapeHtml(t("pairContextLine", { direction: formatDirection(latest), divergence: localizeEnum(latest.divergence_state) }))}</p>
-            <div class="signal-tags">
-              <span class="signal-tag signal-tag-long">${escapeHtml(t("longLabel", { asset: legs.longAsset }))}</span>
-              <span class="signal-tag signal-tag-short">${escapeHtml(t("shortLabel", { asset: legs.shortAsset }))}</span>
+        <div class="detail-main-stack">
+          <div class="detail-summary">
+            <div>
+              <h3>${escapeHtml(latest.pair ?? t("unknownPair"))}</h3>
+              <p>${escapeHtml(t("pairContextLine", { direction: formatDirection(latest), divergence: localizeEnum(latest.divergence_state) }))}</p>
+              <div class="signal-tags">
+                <span class="signal-tag signal-tag-long">${escapeHtml(t("longLabel", { asset: legs.longAsset }))}</span>
+                <span class="signal-tag signal-tag-short">${escapeHtml(t("shortLabel", { asset: legs.shortAsset }))}</span>
+              </div>
+            </div>
+            <span class="status-pill ${toneClass(latest.status)}">${escapeHtml(localizeStatus(latest.status))}</span>
+          </div>
+
+          <div class="detail-hero-stats">
+            <div class="compact-stat">
+              <span class="compact-stat-label">${escapeHtml(t("zScore"))}</span>
+              <strong class="compact-stat-value">${escapeHtml(formatSigned(latest.spread_zscore))}</strong>
+            </div>
+            <div class="compact-stat">
+              <span class="compact-stat-label">${escapeHtml(t("conviction"))}</span>
+              <strong class="compact-stat-value">${escapeHtml(latest.conviction_score ?? "—")}</strong>
+            </div>
+            <div class="compact-stat">
+              <span class="compact-stat-label">${escapeHtml(t("correlation"))}</span>
+              <strong class="compact-stat-value">${escapeHtml(formatNumber(latest.correlation, 3))}</strong>
             </div>
           </div>
-          <span class="status-pill ${toneClass(latest.status)}">${escapeHtml(localizeStatus(latest.status))}</span>
-        </div>
 
-        <div class="detail-grid">
-          ${metricChip("zScore", formatSigned(latest.spread_zscore), "zScoreHelp")}
-          ${metricChip("conviction", latest.conviction_score ?? "—", "convictionHelp")}
-          ${metricChip("correlation", formatNumber(latest.correlation, 3), "correlationHelp")}
-          ${metricChip("regime", localizeEnum(latest.market_regime))}
-          ${metricChip("returnSpread", `${formatSigned(latest.base_vs_peer_average_return_pct)}%`)}
-          ${metricChip("baseVsPeer", `${latest.base_asset ?? "—"} vs ${latest.quote_asset ?? "—"}`)}
-        </div>
+          <div class="detail-grid">
+            ${metricChip("regime", localizeEnum(latest.market_regime))}
+            ${metricChip("returnSpread", `${formatSigned(latest.base_vs_peer_average_return_pct)}%`)}
+            ${metricChip("baseVsPeer", `${latest.base_asset ?? "—"} vs ${latest.quote_asset ?? "—"}`)}
+            ${metricChip("direction", formatDirection(latest))}
+          </div>
 
-        <div class="detail-section" style="margin-top: 16px;">
-          <h3>${escapeHtml(t("operatorNotes"))}</h3>
-          <div class="insight-list">
-            <div class="insight-item"><strong>${escapeHtml(t("summary"))}:</strong> ${escapeHtml(evidence.summary ?? t("noSummary"))}</div>
-            <div class="insight-item"><strong>${escapeHtml(t("decision"))}:</strong> ${escapeHtml(evidence.business_decision ?? t("noDecision"))}</div>
-            <div class="insight-item"><strong>${escapeHtml(t("riskNotes"))}:</strong> ${escapeHtml(riskNotes.join(" | ") || t("noRiskNotes"))}</div>
+          <div class="detail-block">
+            <div class="detail-block-head">
+              <div>
+                <h3>${escapeHtml(t("operatorNotes"))}</h3>
+                <p class="panel-caption">${escapeHtml(t("pairDetailCaption"))}</p>
+              </div>
+              <span class="mini-badge">${escapeHtml(riskNotes.length || 0)}</span>
+            </div>
+            <div class="detail-note-grid">
+              <div class="detail-note-card">
+                <span class="detail-note-label">${escapeHtml(t("summary"))}</span>
+                <strong>${escapeHtml(evidence.summary ?? t("noSummary"))}</strong>
+              </div>
+              <div class="detail-note-card">
+                <span class="detail-note-label">${escapeHtml(t("decision"))}</span>
+                <strong>${escapeHtml(evidence.business_decision ?? t("noDecision"))}</strong>
+              </div>
+              <div class="detail-note-card">
+                <span class="detail-note-label">${escapeHtml(t("riskNotes"))}</span>
+                <span>${escapeHtml(riskNotes.join(" | ") || t("noRiskNotes"))}</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -2277,6 +2625,7 @@ async function selectPair(pair) {
 async function loadDashboard() {
   const data = await api("/api/dashboard");
   state.dashboard = data;
+  syncBusyStateFromDashboard(data);
   document.getElementById("snapshot-status").textContent = localizeStatus(data.latest_overview?.status ?? "ready");
   renderStats(data.stats);
   renderRunSummary("latest-overview", data.latest_overview, "noDailyOverview");
@@ -2303,12 +2652,28 @@ async function loadDashboard() {
   document.getElementById("pair-detail").innerHTML = `<div class="muted">${escapeHtml(t("noPairDetailYet"))}</div>`;
 }
 
+function updateWatchlistPairCount() {
+  const editor = document.getElementById("watchlist-editor");
+  const badge = document.getElementById("watchlist-pair-count");
+  if (!editor || !badge) {
+    return;
+  }
+  const count = editor.value
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean).length;
+  badge.textContent = String(count);
+}
+
 async function runAction(label, fn) {
   try {
     setBusyState(true, label);
     setActionLog(t("actionRunning", { label }));
     document.getElementById("action-log").dataset.userSet = "true";
     const result = await fn();
+    if (result?.job?.id) {
+      return await waitForJob(result.job, label);
+    }
     setBusyState(false);
     setActionLog(t("actionSuccess", { label }), "ok");
     await loadDashboard();
@@ -2316,6 +2681,37 @@ async function runAction(label, fn) {
   } catch (error) {
     setBusyState(false);
     setActionLog(t("actionFailed", { label, error: error.message }), "error");
+  }
+}
+
+async function waitForJob(job, label) {
+  let currentJob = job;
+  state.activeJobId = currentJob.id ?? null;
+  setBusyState(true, getBusyLabelForJob(currentJob) || label, currentJob.message || t("busySubtitle"));
+  setActionLog(currentJob.message || t("actionRunning", { label }), "info");
+
+  while (true) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    currentJob = await api(`/api/jobs/${currentJob.id}`);
+    state.activeJobId = currentJob.id ?? null;
+
+    if (currentJob.status === "queued" || currentJob.status === "running") {
+      setBusyState(true, getBusyLabelForJob(currentJob) || label, currentJob.message || t("busySubtitle"));
+      setActionLog(currentJob.message || t("actionRunning", { label }), "info");
+      continue;
+    }
+
+    if (currentJob.status === "completed") {
+      state.activeJobId = null;
+      setBusyState(false);
+      setActionLog(currentJob.message || t("actionSuccess", { label }), "ok");
+      await loadDashboard();
+      return currentJob.result;
+    }
+
+    state.activeJobId = null;
+    setBusyState(false);
+    throw new Error(currentJob.error || currentJob.message || "Job failed");
   }
 }
 
@@ -2402,6 +2798,8 @@ document.getElementById("save-watchlist").addEventListener("click", async () => 
     status.textContent = t("watchlistSaved");
   }
 });
+
+document.getElementById("watchlist-editor").addEventListener("input", updateWatchlistPairCount);
 
 document.getElementById("run-monitor-now").addEventListener("click", () =>
   runAction(t("runMonitorAction"), () => api("/api/monitor/run", { method: "POST" }))
