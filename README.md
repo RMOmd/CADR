@@ -4,7 +4,9 @@ This repository contains the **CADR** strategy skill for AI Agents, built for th
 
 ## Overview
 
-The CADR skill allows AI agents to detect cross-asset divergences between cryptocurrency pairs (e.g., BTC/ETH) and generate backtestable or live-thesis mean-reversion strategy specifications. It is now designed for **CoinMarketCap Agent Hub / CMC MCP first**, with direct REST usage kept as a fallback.
+![CADR Dashboard](screenshot.png)
+
+The CADR skill allows AI agents to detect cross-asset divergences between cryptocurrency pairs (e.g., BTC/ETH) and generate robust, backtestable mean-reversion trading strategy specifications. It relies entirely on CoinMarketCap data via the CMC API and MCP Server.
 
 ## Features
 
