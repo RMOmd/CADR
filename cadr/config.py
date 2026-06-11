@@ -43,7 +43,32 @@ RESEARCH_MONITORING_PAIRS = [
     ("ETH", "ADA"),
 ]
 
-MONITORING_PAIRS = list(CONFIRMED_MONITORING_PAIRS)
+# Expanded experiment set built from current top-cap CoinMarketCap majors while
+# skipping stablecoin legs that CADR blocks by design.
+TOP20_CAP_MONITORING_PAIRS = [
+    ("BTC", "ETH"),
+    ("BTC", "BNB"),
+    ("BTC", "XRP"),
+    ("BTC", "SOL"),
+    ("BTC", "TRX"),
+    ("BTC", "DOGE"),
+    ("ETH", "BNB"),
+    ("ETH", "XRP"),
+    ("ETH", "SOL"),
+    ("ETH", "TRX"),
+    ("ETH", "DOGE"),
+    ("BNB", "SOL"),
+    ("BNB", "XRP"),
+    ("SOL", "XRP"),
+    ("SOL", "ADA"),
+    ("SOL", "LINK"),
+    ("TRX", "TON"),
+    ("DOGE", "XRP"),
+    ("XMR", "ZEC"),
+    ("LTC", "BCH"),
+]
+
+MONITORING_PAIRS = list(TOP20_CAP_MONITORING_PAIRS)
 CADR_DASHBOARD_DB_PATH = os.getenv("CADR_DASHBOARD_DB_PATH", "log/cadr_dashboard.db")
 CADR_DASHBOARD_HOST = os.getenv("CADR_DASHBOARD_HOST", "127.0.0.1")
 CADR_DASHBOARD_PORT = int(os.getenv("CADR_DASHBOARD_PORT", "8010"))

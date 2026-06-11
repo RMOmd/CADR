@@ -38,6 +38,11 @@ class SnapshotEvaluateRequest(BaseModel):
     snapshot_path: str | None = None
 
 
+class HistorySyncRequest(BaseModel):
+    symbols: List[str] | None = None
+    days: int = Field(default=90, ge=7, le=365)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.dashboard_service.start_background_worker()
@@ -89,6 +94,33 @@ def create_app() -> FastAPI:
             return request.app.state.dashboard_service.get_pair_detail(pair)
         except KeyError:
             raise HTTPException(status_code=404, detail=f"Pair '{pair}' is not in the dashboard history.")
+
+    @app.get("/api/history/assets/{symbol}")
+    def get_asset_history(
+        symbol: str,
+        request: Request,
+        quote_limit: int = 100,
+        ohlcv_limit: int = 200,
+    ):
+        return request.app.state.dashboard_service.get_asset_history_payload(
+            symbol,
+            quote_limit=quote_limit,
+            ohlcv_limit=ohlcv_limit,
+        )
+
+    @app.post("/api/history/sync")
+    def sync_asset_history(payload: HistorySyncRequest, request: Request):
+        return dispatch_job(
+            "history_sync",
+            {
+                "symbols": payload.symbols,
+                "days": payload.days,
+            },
+            lambda: request.app.state.dashboard_service.sync_asset_history(
+                symbols=payload.symbols,
+                days=payload.days,
+            ),
+        )
 
     @app.get("/api/runs")
     def get_runs(request: Request):

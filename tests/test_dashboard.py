@@ -86,6 +86,92 @@ def test_dashboard_storage_roundtrip(tmp_path: Path):
     assert storage.get_forecast_summary()["wins"] == 1
 
 
+def test_dashboard_storage_market_history_roundtrip(tmp_path: Path):
+    storage = DashboardStorage(str(tmp_path / "dashboard.db"))
+
+    stored_quotes = storage.add_quote_snapshots(
+        {
+            "BTC": SimpleNamespace(
+                price=64000.0,
+                market_cap=1_200_000_000_000.0,
+                volume_24h=25_000_000_000.0,
+                percent_change_1h=0.2,
+                percent_change_24h=1.1,
+                percent_change_7d=4.5,
+                percent_change_30d=12.0,
+            )
+        },
+        captured_at="2026-06-11T18:00:00Z",
+        source="test_quote_capture",
+    )
+    stored_ohlcv = storage.add_ohlcv_history(
+        "BTC",
+        [
+            {
+                "timestamp": "2026-06-10T00:00:00Z",
+                "open": 63000.0,
+                "high": 64500.0,
+                "low": 62500.0,
+                "close": 64000.0,
+                "volume": 12345.0,
+            }
+        ],
+        captured_at="2026-06-11T18:00:00Z",
+        source="test_ohlcv_capture",
+    )
+
+    assert stored_quotes == 1
+    assert stored_ohlcv == 1
+    assert storage.list_quote_snapshots("BTC", limit=5)[0]["source"] == "test_quote_capture"
+    assert storage.list_ohlcv_history("BTC", limit=5)[0]["close"] == 64000.0
+
+
+def test_dashboard_service_sync_asset_history_persists_quotes_and_ohlcv(tmp_path: Path):
+    class FakeCMCClient:
+        def get_quotes(self, symbols):
+            return {
+                symbol: SimpleNamespace(
+                    price=100.0 + index,
+                    market_cap=1_000_000.0 + index,
+                    volume_24h=50_000.0 + index,
+                    percent_change_1h=0.1,
+                    percent_change_24h=0.5,
+                    percent_change_7d=1.5,
+                    percent_change_30d=3.0,
+                )
+                for index, symbol in enumerate(symbols)
+            }
+
+        def get_historical_ohlcv(self, symbol, days=90):
+            index = pd.date_range("2026-06-01", periods=3, freq="D", tz="UTC")
+            closes = [100.0, 101.0, 102.0]
+            return pd.DataFrame(
+                {
+                    "open": closes,
+                    "high": closes,
+                    "low": closes,
+                    "close": closes,
+                    "volume": [1000.0, 1100.0, 1200.0],
+                },
+                index=index,
+            )
+
+    storage = DashboardStorage(str(tmp_path / "dashboard.db"))
+    service = DashboardService(
+        storage=storage,
+        monitoring_pairs=[("BTC", "ETH")],
+        cmc_client=FakeCMCClient(),
+    )
+
+    result = service.sync_asset_history(symbols=["BTC", "ETH"], days=30)
+
+    assert result["status"] == "ok"
+    assert result["quote_symbols_fetched"] == 2
+    assert result["ohlcv_points_fetched"] == 6
+    assert storage.list_quote_snapshots("BTC", limit=5)[0]["source"] == "history_sync_quotes"
+    assert storage.list_ohlcv_history("ETH", limit=5)[0]["source"] == "history_sync_ohlcv"
+
+
 def test_dashboard_service_watchlist_update_and_forecast_export(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "dashboard.db"
     export_path = tmp_path / "forecasts.json"
@@ -530,15 +616,15 @@ def test_snapshot_export_and_evaluation_split_execution_ready_cohort(tmp_path: P
     export = export_dashboard_snapshot(storage, ExportCMCClient(), db_path=str(tmp_path / "dashboard.db"))
     evaluation = evaluate_dashboard_snapshot(export["latest_path"], EvaluationCMCClient())
 
-    assert export["pair_count"] == 2
+    assert export["pair_count"] == 1
     assert export["execution_ready_pair_count"] == 1
     assert export["demo_shortlist_count"] == 1
     latest_snapshot = json.loads(Path(export["latest_path"]).read_text(encoding="utf-8"))
     assert latest_snapshot["confirmed_shortlist_count"] == 1
-    assert evaluation["summary"]["total"] == 2
+    assert evaluation["summary"]["total"] == 1
     assert evaluation["execution_ready_summary"]["total"] == 1
     assert evaluation["execution_ready_summary"]["wins"] == 1
-    assert evaluation["excluded_reason_counts"]["pair_not_in_watchlist"] >= 1
+    assert evaluation["excluded_reason_counts"] == {}
 
 
 def test_dashboard_api_uses_runtime_service_override():
@@ -597,6 +683,23 @@ def test_dashboard_api_uses_runtime_service_override():
         def get_pair_detail(self, pair):
             return {"latest": {"pair": pair}, "history": []}
 
+        def get_asset_history_payload(self, symbol, quote_limit=100, ohlcv_limit=200):
+            return {
+                "symbol": symbol,
+                "quote_snapshots": [{"symbol": symbol, "price": 100.0}],
+                "ohlcv_history": [{"symbol": symbol, "close": 100.0}],
+            }
+
+        def sync_asset_history(self, symbols=None, days=90):
+            return {
+                "status": "ok",
+                "symbols": symbols or ["BTC"],
+                "days": days,
+                "quote_symbols_fetched": 1,
+                "ohlcv_points_fetched": 3,
+                "errors": [],
+            }
+
         def run_daily_overview(self):
             return {"status": "ok"}
 
@@ -634,6 +737,8 @@ def test_dashboard_api_uses_runtime_service_override():
         assert client.get("/api/dashboard").json()["stats"]["monitored_pairs"] == 1
         assert client.get("/api/pairs").json()["pairs"][0]["pair"] == "BTC/ETH"
         assert client.get("/api/pairs/BTC%2FETH").json()["latest"]["pair"] == "BTC/ETH"
+        assert client.get("/api/history/assets/BTC").json()["quote_snapshots"][0]["symbol"] == "BTC"
+        assert client.post("/api/history/sync", json={"symbols": ["BTC"], "days": 30}).json()["status"] == "ok"
         assert client.post("/api/runs/daily-overview").json()["status"] == "ok"
         assert client.post("/api/runs/default-scan", json={"lookback_days": 120}).json()["lookback_days"] == 120
         assert client.post(

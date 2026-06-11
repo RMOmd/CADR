@@ -122,6 +122,35 @@ class DashboardStorage:
                     finished_at TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS asset_quote_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    market_cap REAL,
+                    volume_24h REAL,
+                    percent_change_1h REAL,
+                    percent_change_24h REAL,
+                    percent_change_7d REAL,
+                    percent_change_30d REAL,
+                    captured_at TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    UNIQUE(symbol, captured_at)
+                );
+
+                CREATE TABLE IF NOT EXISTS asset_ohlcv_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL NOT NULL,
+                    volume REAL,
+                    captured_at TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    UNIQUE(symbol, timestamp)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_runs_type_id
                 ON runs (run_type, id DESC);
 
@@ -136,6 +165,12 @@ class DashboardStorage:
 
                 CREATE INDEX IF NOT EXISTS idx_background_jobs_status_created
                 ON background_jobs (status, created_at, id);
+
+                CREATE INDEX IF NOT EXISTS idx_asset_quote_snapshots_symbol_captured
+                ON asset_quote_snapshots (symbol, captured_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_asset_ohlcv_history_symbol_timestamp
+                ON asset_ohlcv_history (symbol, timestamp DESC);
                 """
             )
             conn.execute("PRAGMA journal_mode=WAL")
@@ -286,6 +321,45 @@ class DashboardStorage:
                 """
             ).fetchall()
             return [self._row_to_signal(row) for row in rows]
+
+    def list_quote_snapshots(self, symbol: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        with self.connection() as conn:
+            if symbol:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM asset_quote_snapshots
+                    WHERE symbol = ?
+                    ORDER BY captured_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (str(symbol).upper(), limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM asset_quote_snapshots
+                    ORDER BY captured_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            return [self._row_to_quote_snapshot(row) for row in rows]
+
+    def list_ohlcv_history(self, symbol: str, limit: int = 200) -> List[Dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM asset_ohlcv_history
+                WHERE symbol = ?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT ?
+                """,
+                (str(symbol).upper(), limit),
+            ).fetchall()
+            return [self._row_to_ohlcv_history(row) for row in rows]
 
     def get_pair_history(self, pair: str, limit: int = 10) -> List[Dict[str, Any]]:
         with self.connection() as conn:
@@ -476,6 +550,114 @@ class DashboardStorage:
         if job is None:
             raise RuntimeError(f"Background job {job_id} was not created.")
         return job
+
+    def add_quote_snapshots(
+        self,
+        quotes: Dict[str, Any],
+        *,
+        captured_at: str,
+        source: str,
+    ) -> int:
+        if not quotes:
+            return 0
+
+        rows = []
+        for symbol, quote in quotes.items():
+            price = getattr(quote, "price", None)
+            if price is None:
+                continue
+            rows.append(
+                (
+                    str(symbol).upper(),
+                    float(price),
+                    self._safe_float(getattr(quote, "market_cap", None)),
+                    self._safe_float(getattr(quote, "volume_24h", None)),
+                    self._safe_float(getattr(quote, "percent_change_1h", None)),
+                    self._safe_float(getattr(quote, "percent_change_24h", None)),
+                    self._safe_float(getattr(quote, "percent_change_7d", None)),
+                    self._safe_float(getattr(quote, "percent_change_30d", None)),
+                    captured_at,
+                    source,
+                )
+            )
+
+        if not rows:
+            return 0
+
+        with self.connection() as conn:
+            conn.executemany(
+                """
+                INSERT INTO asset_quote_snapshots (
+                    symbol, price, market_cap, volume_24h,
+                    percent_change_1h, percent_change_24h, percent_change_7d, percent_change_30d,
+                    captured_at, source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, captured_at) DO UPDATE SET
+                    price = excluded.price,
+                    market_cap = excluded.market_cap,
+                    volume_24h = excluded.volume_24h,
+                    percent_change_1h = excluded.percent_change_1h,
+                    percent_change_24h = excluded.percent_change_24h,
+                    percent_change_7d = excluded.percent_change_7d,
+                    percent_change_30d = excluded.percent_change_30d,
+                    source = excluded.source
+                """,
+                rows,
+            )
+        return len(rows)
+
+    def add_ohlcv_history(
+        self,
+        symbol: str,
+        rows: Sequence[Dict[str, Any]],
+        *,
+        captured_at: str,
+        source: str,
+    ) -> int:
+        normalized_symbol = str(symbol).upper()
+        payload = []
+        for row in rows:
+            timestamp = row.get("timestamp")
+            close = self._safe_float(row.get("close"))
+            if timestamp is None or close is None:
+                continue
+            payload.append(
+                (
+                    normalized_symbol,
+                    str(timestamp),
+                    self._safe_float(row.get("open")),
+                    self._safe_float(row.get("high")),
+                    self._safe_float(row.get("low")),
+                    close,
+                    self._safe_float(row.get("volume")),
+                    captured_at,
+                    source,
+                )
+            )
+
+        if not payload:
+            return 0
+
+        with self.connection() as conn:
+            conn.executemany(
+                """
+                INSERT INTO asset_ohlcv_history (
+                    symbol, timestamp, open, high, low, close, volume, captured_at, source
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, timestamp) DO UPDATE SET
+                    open = excluded.open,
+                    high = excluded.high,
+                    low = excluded.low,
+                    close = excluded.close,
+                    volume = excluded.volume,
+                    captured_at = excluded.captured_at,
+                    source = excluded.source
+                """,
+                payload,
+            )
+        return len(payload)
 
     def get_job(self, job_id: int) -> Optional[Dict[str, Any]]:
         with self.connection() as conn:
@@ -865,3 +1047,44 @@ class DashboardStorage:
             "started_at": row["started_at"],
             "finished_at": row["finished_at"],
         }
+
+    def _row_to_quote_snapshot(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "symbol": row["symbol"],
+            "price": row["price"],
+            "market_cap": row["market_cap"],
+            "volume_24h": row["volume_24h"],
+            "percent_change_1h": row["percent_change_1h"],
+            "percent_change_24h": row["percent_change_24h"],
+            "percent_change_7d": row["percent_change_7d"],
+            "percent_change_30d": row["percent_change_30d"],
+            "captured_at": row["captured_at"],
+            "source": row["source"],
+        }
+
+    def _row_to_ohlcv_history(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "symbol": row["symbol"],
+            "timestamp": row["timestamp"],
+            "open": row["open"],
+            "high": row["high"],
+            "low": row["low"],
+            "close": row["close"],
+            "volume": row["volume"],
+            "captured_at": row["captured_at"],
+            "source": row["source"],
+        }
+
+    @staticmethod
+    def _safe_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            number = float(value)
+            if math.isfinite(number):
+                return number
+        except (TypeError, ValueError):
+            return None
+        return None

@@ -341,11 +341,15 @@ def export_dashboard_snapshot(
     *,
     db_path: str | None = None,
 ) -> Dict[str, Any]:
-    latest_signals = storage.list_latest_pair_signals()
     enabled_watchlist_pairs = {
         entry["pair"]
         for entry in storage.list_watchlist_pairs(enabled_only=True)
     }
+    latest_signals = [
+        signal
+        for signal in storage.list_latest_pair_signals()
+        if cfg.CADR_SNAPSHOT_INCLUDE_NON_WATCHLIST or signal["pair"] in enabled_watchlist_pairs
+    ]
     forecasts = storage.list_forecasts(limit=1000)
     forecasts_by_pair: Dict[str, List[Dict[str, Any]]] = {}
     for item in forecasts:
@@ -353,9 +357,11 @@ def export_dashboard_snapshot(
 
     symbols = sorted({signal["base_asset"] for signal in latest_signals} | {signal["quote_asset"] for signal in latest_signals})
     quotes = cmc_client.get_quotes(symbols) if symbols else {}
+    captured_at = utc_now_iso()
+    if quotes:
+        storage.add_quote_snapshots(quotes, captured_at=captured_at, source="snapshot_export_quotes")
 
     pair_snapshots = []
-    captured_at = utc_now_iso()
     execution_ready_count = 0
     demo_candidates: List[Dict[str, Any]] = []
     confirmed_candidates: List[Dict[str, Any]] = []

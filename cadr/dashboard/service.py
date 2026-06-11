@@ -154,6 +154,11 @@ class DashboardService:
             return self.export_dashboard_snapshot()
         if job_type == "snapshot_evaluate":
             return self.evaluate_dashboard_snapshot(params.get("snapshot_path"))
+        if job_type == "history_sync":
+            return self.sync_asset_history(
+                symbols=params.get("symbols"),
+                days=int(params.get("days", 90)),
+            )
         raise ValueError(f"Unsupported job type: {job_type}")
 
     @staticmethod
@@ -166,6 +171,7 @@ class DashboardService:
             "evaluate_forecasts": "Forecast evaluation",
             "snapshot_export": "Snapshot export",
             "snapshot_evaluate": "Snapshot evaluation",
+            "history_sync": "Market history sync",
         }
         label = labels.get(job_type, job_type.replace("_", " "))
         if status == "queued":
@@ -326,12 +332,16 @@ class DashboardService:
         latest_overview = self.storage.get_latest_run("daily_overview")
         latest_scan = self.storage.get_latest_run("default_scan")
         latest_monitor = self.storage.get_latest_run("monitor_scan")
-        pair_signals = self.storage.list_latest_pair_signals()
+        all_pair_signals = self.storage.list_latest_pair_signals()
         recent_runs = self.storage.list_recent_runs(limit=12)
         monitor_settings = self.storage.get_monitor_settings()
         watchlist = self.storage.list_watchlist_pairs(enabled_only=False)
-        forecast_summary = self.storage.get_forecast_summary()
-        recent_forecasts = self.storage.list_forecasts(limit=8)
+        enabled_watchlist_pairs = {pair["pair"] for pair in watchlist if pair["enabled"]}
+        pair_signals = [signal for signal in all_pair_signals if signal["pair"] in enabled_watchlist_pairs]
+        all_forecasts = self.storage.list_forecasts(limit=500)
+        watchlist_forecasts = [forecast for forecast in all_forecasts if forecast["pair"] in enabled_watchlist_pairs]
+        forecast_summary = self._summarize_forecasts(watchlist_forecasts)
+        recent_forecasts = watchlist_forecasts[:8]
         snapshot_status = get_snapshot_status()
         active_jobs = self.list_active_jobs(limit=8)
 
@@ -377,6 +387,114 @@ class DashboardService:
         return {
             "pairs": self.storage.list_watchlist_pairs(enabled_only=False),
             "monitor": self.storage.get_monitor_settings(),
+        }
+
+    def get_asset_history_payload(
+        self,
+        symbol: str,
+        *,
+        quote_limit: int = 100,
+        ohlcv_limit: int = 200,
+    ) -> Dict[str, Any]:
+        normalized = str(symbol).strip().upper()
+        return {
+            "symbol": normalized,
+            "quote_snapshots": self.storage.list_quote_snapshots(normalized, limit=max(1, min(quote_limit, 500))),
+            "ohlcv_history": self.storage.list_ohlcv_history(normalized, limit=max(1, min(ohlcv_limit, 1000))),
+        }
+
+    def sync_asset_history(
+        self,
+        *,
+        symbols: Sequence[str] | None = None,
+        days: int = 90,
+    ) -> Dict[str, Any]:
+        if symbols:
+            requested_symbols = [str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()]
+        else:
+            requested_symbols = sorted(
+                {
+                    asset
+                    for base_asset, quote_asset in self.get_enabled_watchlist_pairs()
+                    for asset in (base_asset, quote_asset)
+                }
+            )
+
+        normalized_symbols: List[str] = []
+        seen = set()
+        for symbol in requested_symbols:
+            if symbol in seen:
+                continue
+            seen.add(symbol)
+            normalized_symbols.append(symbol)
+
+        if not normalized_symbols:
+            return {
+                "status": "empty",
+                "message": "No symbols selected for history sync.",
+                "symbols": [],
+                "days": max(7, min(int(days), 365)),
+                "quote_symbols_fetched": 0,
+                "ohlcv_points_fetched": 0,
+                "errors": [],
+                "historical_ohlcv_supported": None,
+            }
+
+        bounded_days = max(7, min(int(days), 365))
+        captured_at = utc_now_iso()
+        quotes = self._fetch_quotes_with_storage(
+            normalized_symbols,
+            captured_at=captured_at,
+            source="history_sync_quotes",
+        )
+
+        ohlcv_points_fetched = 0
+        errors: List[Dict[str, str]] = []
+        for symbol in normalized_symbols:
+            try:
+                history = self._fetch_historical_ohlcv_with_storage(
+                    symbol,
+                    days=bounded_days,
+                    captured_at=captured_at,
+                    source="history_sync_ohlcv",
+                )
+                ohlcv_points_fetched += int(len(history.index))
+            except Exception as exc:
+                errors.append({"symbol": symbol, "error": str(exc)})
+
+        historical_ohlcv_supported = not any(
+            "doesn't support this endpoint" in (item.get("error") or "").lower()
+            or "subscription plan" in (item.get("error") or "").lower()
+            for item in errors
+        )
+
+        if errors and not historical_ohlcv_supported and len(quotes) > 0:
+            message = (
+                "Quote snapshots were saved locally, but the current CoinMarketCap API plan "
+                "does not allow historical OHLCV access for this endpoint."
+            )
+        elif errors and len(quotes) > 0:
+            message = (
+                f"Quote snapshots were saved locally, but {len(errors)} symbol(s) failed during "
+                "historical sync."
+            )
+        elif errors:
+            message = f"History sync failed for {len(errors)} symbol(s)."
+        else:
+            message = (
+                f"Saved quote snapshots for {len(quotes)} symbol(s) and fetched "
+                f"{ohlcv_points_fetched} OHLCV rows."
+            )
+
+        return {
+            "status": "ok" if not errors else ("partial" if quotes or ohlcv_points_fetched else "error"),
+            "message": message,
+            "symbols": normalized_symbols,
+            "days": bounded_days,
+            "quote_symbols_fetched": len(quotes),
+            "ohlcv_points_fetched": ohlcv_points_fetched,
+            "errors": errors,
+            "historical_ohlcv_supported": historical_ohlcv_supported,
         }
 
     def update_watchlist(
@@ -438,7 +556,7 @@ class DashboardService:
             }
 
         symbols = sorted({forecast["base_asset"] for forecast in due_forecasts} | {forecast["quote_asset"] for forecast in due_forecasts})
-        quotes = self.cmc_client.get_quotes(symbols)
+        quotes = self._fetch_quotes_with_storage(symbols, captured_at=now_iso, source="forecast_evaluation_quotes")
         history_days_by_symbol: Dict[str, int] = {}
         for forecast in due_forecasts:
             lookback_days = int(self._resolve_forecast_spread_model(forecast).get("lookback_days") or 30)
@@ -450,7 +568,12 @@ class DashboardService:
         historical_prices: Dict[str, pd.DataFrame] = {}
         for symbol, days in history_days_by_symbol.items():
             try:
-                historical_prices[symbol] = self.cmc_client.get_historical_ohlcv(symbol, days=days)
+                historical_prices[symbol] = self._fetch_historical_ohlcv_with_storage(
+                    symbol,
+                    days=days,
+                    captured_at=now_iso,
+                    source="forecast_path_history",
+                )
             except Exception:
                 historical_prices[symbol] = pd.DataFrame()
         evaluated = 0
@@ -484,10 +607,35 @@ class DashboardService:
         summary = self.storage.get_forecast_summary()
         self.export_forecasts_snapshot()
         return {
-            "evaluated": evaluated,
-            "skipped": skipped,
-            "summary": summary,
+                "evaluated": evaluated,
+                "skipped": skipped,
+                "summary": summary,
+            }
+
+    @staticmethod
+    def _summarize_forecasts(forecasts: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+        summary = {
+            "total": len(forecasts),
+            "pending": 0,
+            "evaluated": 0,
+            "wins": 0,
+            "losses": 0,
+            "flat": 0,
         }
+        for forecast in forecasts:
+            status = str(forecast.get("status") or "")
+            outcome = str(forecast.get("outcome") or "")
+            if status == "pending":
+                summary["pending"] += 1
+            elif status == "evaluated":
+                summary["evaluated"] += 1
+                if outcome == "win":
+                    summary["wins"] += 1
+                elif outcome == "loss":
+                    summary["losses"] += 1
+                elif outcome == "flat":
+                    summary["flat"] += 1
+        return summary
 
     def export_forecasts_snapshot(self) -> None:
         payload = {
@@ -500,6 +648,45 @@ class DashboardService:
         export_path = Path(cfg.CADR_FORECAST_EXPORT_PATH)
         export_path.parent.mkdir(parents=True, exist_ok=True)
         export_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _fetch_quotes_with_storage(
+        self,
+        symbols: Sequence[str],
+        *,
+        captured_at: str,
+        source: str,
+    ) -> Dict[str, Any]:
+        normalized = sorted({str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()})
+        if not normalized:
+            return {}
+        quotes = self.cmc_client.get_quotes(normalized)
+        self.storage.add_quote_snapshots(quotes, captured_at=captured_at, source=source)
+        return quotes
+
+    def _fetch_historical_ohlcv_with_storage(
+        self,
+        symbol: str,
+        *,
+        days: int,
+        captured_at: str,
+        source: str,
+    ) -> pd.DataFrame:
+        history = self.cmc_client.get_historical_ohlcv(symbol, days=days)
+        if not history.empty:
+            rows = []
+            for timestamp, row in history.sort_index().iterrows():
+                rows.append(
+                    {
+                        "timestamp": self._timestamp_to_iso(pd.Timestamp(timestamp)),
+                        "open": row.get("open"),
+                        "high": row.get("high"),
+                        "low": row.get("low"),
+                        "close": row.get("close"),
+                        "volume": row.get("volume"),
+                    }
+                )
+            self.storage.add_ohlcv_history(symbol, rows, captured_at=captured_at, source=source)
+        return history
 
     def get_enabled_watchlist_pairs(self) -> List[Tuple[str, str]]:
         pairs = self.storage.list_watchlist_pairs(enabled_only=True)
@@ -574,7 +761,7 @@ class DashboardService:
             return []
 
         unique_symbols = sorted({signal["base_asset"] for signal in candidates} | {signal["quote_asset"] for signal in candidates})
-        quotes = self.cmc_client.get_quotes(unique_symbols)
+        quotes = self._fetch_quotes_with_storage(unique_symbols, captured_at=created_at, source="forecast_entry_quotes")
 
         created_forecasts: List[Dict[str, Any]] = []
         for signal in candidates:
@@ -864,9 +1051,20 @@ class DashboardService:
         aligned_days = int(data_quality.get("aligned_days") or cfg.CADR_MONITOR_LOOKBACK_DAYS)
         lookback_days = max(30, min(180, aligned_days))
 
+        captured_at = utc_now_iso()
         try:
-            base_history = self.cmc_client.get_historical_ohlcv(signal["base_asset"], days=lookback_days + 5)
-            quote_history = self.cmc_client.get_historical_ohlcv(signal["quote_asset"], days=lookback_days + 5)
+            base_history = self._fetch_historical_ohlcv_with_storage(
+                signal["base_asset"],
+                days=lookback_days + 5,
+                captured_at=captured_at,
+                source="forecast_model_history",
+            )
+            quote_history = self._fetch_historical_ohlcv_with_storage(
+                signal["quote_asset"],
+                days=lookback_days + 5,
+                captured_at=captured_at,
+                source="forecast_model_history",
+            )
         except Exception:
             base_history = pd.DataFrame()
             quote_history = pd.DataFrame()
